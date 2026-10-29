@@ -1,10 +1,11 @@
 import React from 'react';
 import type { ClinicSettings, Diagnosis, MedDocument, Patient, RadiologyStudy, User, Visit } from '../lib/types';
 import { RADIOLOGY_LABELS } from '../lib/types';
-import { ageOf, fmtDate, isMinor, money, patientName, todayStr, userName } from '../lib/utils';
+import { ageOf, fmtDate, isMinor, money, needsRepresentative, patientName, todayStr, userName } from '../lib/utils';
 import { diagnosisLine } from '../components/clinical';
 import { Box, FooterNote, Row, SheetHeader, Signatures } from './common';
 import { DEFAULT_TEMPLATES } from '../data/defaults';
+import { CONSENT_220_2, LEGAL } from '../data/forms220';
 
 export interface DocCtx {
   patient: Patient;
@@ -66,7 +67,10 @@ const allDiagnoses = (visits: Visit[]): Diagnosis[] => {
 
 const patientLine = (p: Patient) => `${patientName(p)}${p.fatherName ? ` (მამის სახ. ${p.fatherName})` : ''}`;
 const doctorLine = (u?: User) => (u ? `${userName(u)}${u.license ? `, სერტ. №${u.license}` : ''}` : '');
-const signerName = (p: Patient) => (isMinor(p) && p.guardianName ? `${p.guardianName} (${p.guardianRelation || 'კანონიერი წარმომადგენელი'})` : patientName(p));
+/** ხელმომწერი: 16 წლამდე — მშობელი/კანონიერი წარმომადგენელი, 16+ — თავად პაციენტი (პაციენტის უფლებების კანონი, მუხ. 41) */
+const signerName = (p: Patient) =>
+  needsRepresentative(p) ? `${p.guardianName || '________________'} (${p.guardianRelation || 'მშობელი/კანონიერი წარმომადგენელი'})` : patientName(p);
+const signerRole = (p: Patient) => (needsRepresentative(p) ? 'მშობელი/კანონიერი წარმომადგენელი' : 'პაციენტი');
 
 const DocNo = ({ doc }: { doc: MedDocument }) => (
   <>
@@ -110,73 +114,129 @@ const Diags = ({ list }: { list?: Diagnosis[] }) => (
 
 // ---------------------------------------------------------------------------
 
+const COURSE = ['', 'მწვავე', 'ქვემწვავე', 'ქრონიკული', 'მორეციდივე'];
+
+/** ფორმა №IV-100/ა — ბრძანება №338/ნ (ცვლ. №230/ნ 2008, №01-42/ნ 2013, №01-73/ნ 2020), დანართი №2 */
 const form100: DocType = {
   id: 'form100',
   title: 'ცნობა ჯანმრთელობის მდგომარეობის შესახებ',
   formCode: 'ფორმა №IV-100/ა',
   group: 'ოფიციალური ფორმები',
-  description: 'ამონაწერი სამედიცინო ბარათიდან — გაიცემა პაციენტის მოთხოვნით სამსახურში, სასწავლებელში, სადაზღვევოში და სხვ. წარსადგენად.',
-  legal:
-    'საქართველოს შრომის, ჯანმრთელობისა და სოციალური დაცვის მინისტრის 2007 წლის 9 აგვისტოს №338/ნ ბრძანება „სამედიცინო დოკუმენტაციის... ფორმების დამტკიცების შესახებ“ — ფორმა №IV-100/ა.',
+  description: 'გაიცემა მხოლოდ იმ დაავადებისთვის, რომლის გამოც პაციენტმა მიმართა დაწესებულებას. აღირიცხება სპეციალურ ჟურნალში რიგითი ნომრით.',
+  legal: `${LEGAL.order338}. ხელს აწერს მკურნალი ექიმი და დაწესებულების ხელმძღვანელი/მოადგილე, მოწმდება ბეჭდით (დანართი №1, მუხ. 2.2); ცნობა გაიცემა მხოლოდ იმ დაავადებისთვის, რომლის გამოც პაციენტმა მიმართა (დანართი №3, მუხ. 2).`,
   fields: [
-    { key: 'presentTo', label: 'ცნობა წარსადგენია (სად)', kind: 'text', full: true, required: true },
-    { key: 'workplace', label: 'სამუშაო ადგილი და თანამდებობა', kind: 'text', full: true },
-    { key: 'visitDates', label: 'დაწესებულებაში მიმართვის / მკურნალობის თარიღები', kind: 'text', full: true },
-    { key: 'diagnoses', label: 'სრული დიაგნოზი (ICD-10)', kind: 'diagnoses', full: true, required: true },
-    { key: 'pastDiseases', label: 'გადატანილი დაავადებები', kind: 'textarea', category: 'anamnesisVitae', full: true },
-    { key: 'anamnesis', label: 'მოკლე ანამნეზი', kind: 'textarea', category: 'anamnesisMorbi', full: true },
-    { key: 'exams', label: 'ჩატარებული დიაგნოსტიკური კვლევები', kind: 'textarea', category: 'extraExams', full: true },
-    { key: 'treatment', label: 'ჩატარებული მკურნალობა', kind: 'textarea', category: 'treatment', full: true, rows: 4 },
-    { key: 'condition', label: 'მდგომარეობა ცნობის გაცემისას', kind: 'textarea', category: 'general', full: true, rows: 2 },
-    { key: 'recommendations', label: 'სამკურნალო და შრომითი რეკომენდაციები', kind: 'textarea', category: 'recommendations', full: true },
+    { key: 'sendTo', label: '2. დაწესებულების დასახელება, მისამართი, სადაც იგზავნება ცნობა', kind: 'text', full: true, required: true },
+    { key: 'workplace', label: '7. სამუშაო ადგილი და თანამდებობა (მოსწავლე/სტუდენტი — სასწავლებელი, კლასი/კურსი)', kind: 'text', full: true },
+    { key: 'dateVisit', label: '8ა. ექიმთან მიმართვის თარიღი', kind: 'date', required: true },
+    { key: 'dateReferInpatient', label: '8ბ. სტაციონარში გაგზავნის თარიღი', kind: 'date' },
+    { key: 'dateAdmit', label: '8გ. სტაციონარში მოთავსების თარიღი', kind: 'date' },
+    { key: 'dateDischarge', label: '8დ. გაწერის თარიღი', kind: 'date' },
+    { key: 'conclusion', label: '9. დასკვნა ჯანმრთელობის მდგომარეობის შესახებ („ჯანმრთელი“, „პრაქტიკულად ჯანმრთელი“) — თუ დიაგნოზი არ ეთითება', kind: 'text', full: true },
+    { key: 'diagnoses', label: '9. სრული დიაგნოზი (ძირითადი დაავადება, თანმხლები დაავადებები, გართულებები) შესაბამისი ICD-10 კოდის მითითებით', kind: 'diagnoses', full: true },
+    { key: 'pastDiseases', label: '10. გადატანილი დაავადებები (მათ შორის ბავშვთა ინფექციური)', kind: 'textarea', category: 'anamnesisVitae', full: true, rows: 2 },
+    { key: 'anamnesis', label: '11. მოკლე ანამნეზი', kind: 'textarea', category: 'anamnesisMorbi', full: true },
+    { key: 'exams', label: '12. ჩატარებული დიაგნოსტიკური გამოკვლევები და კონსულტაციები', kind: 'textarea', category: 'extraExams', full: true },
+    { key: 'course', label: '13. ავადმყოფობის მიმდინარეობა', kind: 'select', options: COURSE },
+    { key: 'treatment', label: '14. ჩატარებული მკურნალობა', kind: 'textarea', category: 'treatment', full: true, rows: 4 },
+    { key: 'stateReferral', label: '15. მდგომარეობა სტაციონარში გაგზავნისას', kind: 'textarea', category: 'general', full: true, rows: 2 },
+    { key: 'stateDischarge', label: '16. მდგომარეობა სტაციონარიდან გაწერისას', kind: 'textarea', category: 'general', full: true, rows: 2 },
+    { key: 'recommendations', label: '17. სამკურნალო და შრომითი რეკომენდაციები', kind: 'textarea', category: 'recommendations', full: true },
   ],
   prefill: ({ patient, visit, visits, radiology }) => {
-    const src = visit ? [visit] : visits;
-    const dates = [...src].map((v) => v.date).sort();
+    // ცნობა გაიცემა მხოლოდ იმ დაავადებისთვის, რომლის გამოც პაციენტმა მიმართა (№338/ნ, დანართი №3, მუხ. 2) — ერთი შემთხვევის ფარგლებში
+    const anchor = visit || [...visits].sort((a, b) => b.date.localeCompare(a.date) || b.visitNo - a.visitNo)[0];
+    const caseVisits = anchor ? visits.filter((v) => (v.caseId || v.id) === (anchor.caseId || anchor.id)) : [];
+    const src = (caseVisits.length ? caseVisits : anchor ? [anchor] : []).sort((a, b) => a.date.localeCompare(b.date) || a.visitNo - b.visitNo);
+    const last = src[src.length - 1];
+    const dx = (last || visit)?.diagnoses || [];
     return {
-      presentTo: 'მოთხოვნის ადგილზე',
+      sendTo: 'მოთხოვნის ადგილზე წარსადგენად',
       workplace: patient.workplace || '',
-      visitDates: dates.length ? (dates.length === 1 ? `ამბულატორიულად: ${fmtDate(dates[0])}` : `ამბულატორიულად: ${fmtDate(dates[0])} — ${fmtDate(dates[dates.length - 1])}`) : '',
-      diagnoses: visit ? visit.diagnoses : allDiagnoses(visits),
-      pastDiseases: [patient.chronicDiseases, patient.allergies && `ალერგია: ${patient.allergies}`].filter(Boolean).join('. '),
+      dateVisit: src[0]?.date || todayStr(),
+      dateReferInpatient: '',
+      dateAdmit: '',
+      dateDischarge: '',
+      conclusion: '',
+      diagnoses: dx,
+      pastDiseases: patient.chronicDiseases || '',
       anamnesis: src.map((v) => [v.complaints, v.anamnesisMorbi].filter(Boolean).join(' ')).filter(Boolean).join('\n'),
       exams: [
         ...src.map((v) => v.extraExams).filter(Boolean),
-        ...radiology.filter((r) => !visit || r.visitId === visit.id || r.date === visit.date).map((r) => `${fmtDate(r.date)} — ${RADIOLOGY_LABELS[r.kind]}${r.teeth ? ` (კბ. ${r.teeth})` : ''}${r.conclusion ? `: ${r.conclusion}` : ''}`),
+        ...radiology.filter((r) => !src.length || src.some((v) => r.visitId === v.id || r.date === v.date)).map((r) => `${fmtDate(r.date)} — ${RADIOLOGY_LABELS[r.kind]}${r.teeth ? ` (კბ. ${r.teeth})` : ''}${r.conclusion ? `: ${r.conclusion}` : ''}`),
       ].join('\n'),
+      course: '',
       treatment: src
         .map((v) => `${fmtDate(v.date)}: ${[v.treatment, v.procedures.map((p) => `${p.service}${p.teeth ? ` (კბ. ${p.teeth})` : ''}`).join(', ')].filter(Boolean).join(' ')}`)
         .join('\n'),
-      condition: 'დამაკმაყოფილებელი',
-      recommendations: visit?.recommendations || [...visits].sort((a, b) => b.date.localeCompare(a.date))[0]?.recommendations || '',
+      stateReferral: '',
+      stateDischarge: '',
+      recommendations: last?.recommendations || '',
     };
   },
   Print: ({ doc, c }) => {
     const d = doc.data;
     const p = c.patient;
+    const age = ageOf(p.birthDate) ?? 99;
+    const dx: Diagnosis[] = d.diagnoses || [];
+    const kindLbl = { main: 'ძირითადი დაავადება', secondary: 'თანმხლები დაავადება', complication: 'გართულება' } as const;
+    const issuer = [c.clinic.legalName || c.clinic.name, c.clinic.address, c.clinic.phone && `ტელ.: ${c.clinic.phone}`].filter(Boolean).join(', ');
     return (
       <div className="print-sheet">
-        <SheetHeader clinic={c.clinic} formCode="ფორმა №IV-100/ა" right={<div className="small">დამტკიცებულია №338/ნ ბრძანებით</div>} />
-        <h1>ცნობა ჯანმრთელობის მდგომარეობის შესახებ</h1>
-        <p style={{ textAlign: 'center' }}>
-          № {doc.number} · გაცემის თარიღი: {fmtDate(doc.date)}
-        </p>
-        <Row label="1. ცნობა წარსადგენია:" value={d.presentTo} />
-        <Row label="2. სამედიცინო დაწესებულების დასახელება და მისამართი:" value={[c.clinic.legalName || c.clinic.name, c.clinic.address].filter(Boolean).join(', ')} />
-        <Row label="3. პაციენტის სახელი, გვარი:" value={patientLine(p)} />
-        <Row label="4. დაბადების თარიღი:" value={`${fmtDate(p.birthDate)} (${ageOf(p.birthDate)} წ.)`} />
-        <Row label="5. პირადი ნომერი:" value={p.idNumber} />
-        <Row label="6. მისამართი:" value={p.address} />
-        <Row label="7. სამუშაო ადგილი და თანამდებობა:" value={d.workplace} />
-        <Row label="8. მიმართვის / მკურნალობის თარიღები:" value={d.visitDates} />
-        <Box label="9. სრული დიაგნოზი (ICD-10):" value={<Diags list={d.diagnoses} />} />
+        <div style={{ textAlign: 'right' }} className="small">
+          <b>სამედიცინო დოკუმენტაცია ფორმა №IV-100/ა</b>
+          <div>რეგისტრაციის № {doc.number}</div>
+        </div>
+        <h1>ცნობა</h1>
+        <p style={{ textAlign: 'center', fontWeight: 700, marginTop: -2 }}>ჯანმრთელობის მდგომარეობის შესახებ</p>
+        <Row label="1. ცნობის გამცემი დაწესებულების დასახელება, მისამართი, საკონტაქტო ინფორმაცია:" value={issuer} wide />
+        <Row label="2. დაწესებულების დასახელება, მისამართი, სადაც იგზავნება ცნობა:" value={d.sendTo} wide />
+        <Row label="3. პაციენტის სახელი და გვარი:" value={`${p.firstName} ${p.lastName}`} />
+        <Row label="4. დაბადების თარიღი (რიცხვი/თვე/წელი):" value={fmtDate(p.birthDate).replace(/\./g, '/')} />
+        <Row label="5. პირადი ნომერი:" value={age >= 16 ? p.idNumber : '— (ივსება 16 წელს მიღწეული პირის შემთხვევაში)'} />
+        <Row label="6. მისამართი:" value={[p.address, p.phone && `ტელ.: ${p.phone}`].filter(Boolean).join(', ')} />
+        <Row label="7. სამუშაო ადგილი და თანამდებობა (მოსწავლის/სტუდენტის შემთხვევაში — სასწავლებელი, კლასი/კურსი):" value={d.workplace} wide />
+        <div className="row">
+          <span className="lbl">8. თარიღები:</span>
+        </div>
+        <div style={{ paddingLeft: 16 }}>
+          <Row label="ა) ექიმთან მიმართვის" value={fmtDate(d.dateVisit)} />
+          <Row label="ბ) სტაციონარში გაგზავნის" value={fmtDate(d.dateReferInpatient)} />
+          <Row label="გ) სტაციონარში მოთავსების" value={fmtDate(d.dateAdmit)} />
+          <Row label="დ) გაწერის" value={fmtDate(d.dateDischarge)} />
+        </div>
+        <Box
+          label="9. დასკვნა ჯანმრთელობის მდგომარეობის შესახებ ან სრული დიაგნოზი (ძირითადი დაავადება, თანმხლები დაავადებები, გართულებები) შესაბამისი ICD-10 კოდის მითითებით:"
+          value={
+            <>
+              {d.conclusion && <div>{d.conclusion}</div>}
+              {dx.map((x, i) => (
+                <div key={i}>
+                  {kindLbl[x.kind]} — {x.text}
+                  {x.teeth ? ` (კბ. ${x.teeth})` : ''} ({x.code})
+                </div>
+              ))}
+            </>
+          }
+        />
         <Box label="10. გადატანილი დაავადებები:" value={d.pastDiseases} />
         <Box label="11. მოკლე ანამნეზი:" value={d.anamnesis} />
-        <Box label="12. ჩატარებული დიაგნოსტიკური კვლევები:" value={d.exams} />
-        <Box label="13. ჩატარებული მკურნალობა:" value={d.treatment} />
-        <Box label="14. მდგომარეობა ცნობის გაცემისას:" value={d.condition} />
-        <Box label="15. სამკურნალო და შრომითი რეკომენდაციები:" value={d.recommendations} />
-        <Signatures left={`მკურნალი ექიმი: ${doctorLine(c.doctor)}`} center={`სამედიცინო დირექტორი: ${c.clinic.medicalDirector || ''}`} right="ბ.ა." />
+        <Box label="12. ჩატარებული დიაგნოსტიკური გამოკვლევები და კონსულტაციები:" value={d.exams} />
+        <Row label="13. ავადმყოფობის მიმდინარეობა:" value={d.course} />
+        <Box label="14. ჩატარებული მკურნალობა:" value={d.treatment} />
+        <Row label="15. მდგომარეობა სტაციონარში გაგზავნისას:" value={d.stateReferral} />
+        <Row label="16. მდგომარეობა სტაციონარიდან გაწერისას:" value={d.stateDischarge} />
+        <Box label="17. სამკურნალო და შრომითი რეკომენდაციები:" value={d.recommendations} />
+        <Row label="18. მკურნალი ექიმი (ექიმი-სპეციალისტი):" value={c.doctor ? `${c.doctor.specialty ? c.doctor.specialty + ' — ' : ''}${userName(c.doctor)}${c.doctor.license ? `, სახელმწ. სერტიფიკატი №${c.doctor.license}` : ''}` : ''} wide />
+        <div className="row" style={{ marginTop: 14 }}>
+          <span className="lbl">19. დაწესებულების ხელმძღვანელის/ხელმძღვანელის მოადგილის/მკურნალი ექიმის ხელმოწერა:</span>
+          <span className="val">{c.clinic.director ? `${c.clinic.director}` : ''}</span>
+        </div>
+        <div className="row" style={{ marginTop: 10, justifyContent: 'space-between' }}>
+          <span>
+            <span className="lbl">20. ცნობის გაცემის თარიღი:</span> {fmtDate(doc.date)}
+          </span>
+          <span className="lbl">ბეჭდის ადგილი</span>
+        </div>
         <FooterNote clinic={c.clinic} />
       </div>
     );
@@ -185,82 +245,100 @@ const form100: DocType = {
 
 const CONSENT_KINDS = ['თერაპიული მკურნალობა', 'ენდოდონტიური მკურნალობა', 'კბილის ექსტრაქცია / ქირურგია', 'დენტალური იმპლანტაცია', 'ორთოპედიული მკურნალობა', 'ორთოდონტიული მკურნალობა', 'ადგილობრივი ანესთეზია', 'რენტგენოლოგიური კვლევა'];
 
+/** ფორმა №IV-220-2/ა — ბრძანება №01-55/ნ, დანართი №3 (ოფიციალური ტექსტი) + დამატებითი ინფორმაცია (მუხ. 1.4) */
 const consent: DocType = {
   id: 'consent',
-  title: 'ინფორმირებული თანხმობა სამედიცინო მომსახურებაზე',
-  group: 'თანხმობები',
-  description: 'წერილობითი ინფორმირებული თანხმობა სტომატოლოგიურ მანიპულაციაზე (ქირურგია, ანესთეზია, ენდოდონტია, იმპლანტაცია და სხვ.).',
-  legal:
-    'საქართველოს კანონი „პაციენტის უფლებების შესახებ“ (მუხ. 18, 22–25) და „ჯანმრთელობის დაცვის შესახებ“ — ქირურგიული ოპერაციისა და ზოგადი/ადგილობრივი ანესთეზიისთვის აუცილებელია წერილობითი თანხმობა; 18 წლამდე პაციენტის ნაცვლად თანხმობას აცხადებს კანონიერი წარმომადგენელი.',
+  title: 'პაციენტის წერილობითი ინფორმირებული თანხმობა სამედიცინო მომსახურების გაწევაზე',
+  formCode: 'ფორმა №IV-220-2/ა',
+  group: 'ოფიციალური ფორმები',
+  description: 'ივსება მკურნალი ექიმის მიერ, პაციენტის ან კანონიერი წარმომადგენლის თანდასწრებით, მომსახურების გაწევამდე.',
+  legal: `${LEGAL.order0155}, მუხ. 4; ${LEGAL.patientRights}, მუხ. 22 (პ. 1, 2.ა, 2.ლ, 3) და მუხ. 41 — 16 წლამდე თანხმობას აცხადებს მშობელი/კანონიერი წარმომადგენელი.`,
   fields: [
     { key: 'kind', label: 'სამედიცინო მომსახურების სახე', kind: 'select', options: CONSENT_KINDS, required: true },
     { key: 'teeth', label: 'კბილ(ებ)ი / მიდამო', kind: 'text' },
-    { key: 'procedure', label: 'დაგეგმილი მანიპულაციის აღწერა', kind: 'textarea', category: 'treatment', full: true, required: true },
+    { key: 'procedure', label: 'სამედიცინო მომსახურების მიზანი და მიმდინარეობა', kind: 'textarea', category: 'treatment', full: true, required: true },
     { key: 'diagnoses', label: 'დიაგნოზი', kind: 'diagnoses', full: true },
-    { key: 'risks', label: 'შესაძლო რისკები და გართულებები', kind: 'textarea', category: 'consentRisks', full: true, rows: 5 },
-    { key: 'alternatives', label: 'ალტერნატიული მეთოდები / უარის შედეგები', kind: 'textarea', category: 'consentAlternatives', full: true },
+    { key: 'risks', label: 'თავისებურებანი და შესაძლო გართულებები', kind: 'textarea', category: 'consentRisks', full: true, rows: 5 },
+    { key: 'alternatives', label: 'ალტერნატიული მეთოდები / უარის შემთხვევაში დამდგარი შედეგი', kind: 'textarea', category: 'consentAlternatives', full: true },
     { key: 'anesthesia', label: 'ანესთეზიის სახე', kind: 'text', full: true },
-    { key: 'cost', label: 'სავარაუდო ღირებულება (₾)', kind: 'text' },
+    { key: 'cost', label: 'ღირებულება (₾)', kind: 'text' },
   ],
   prefill: ({ visit, visits }) => {
     const v = visit || [...visits].sort((a, b) => b.date.localeCompare(a.date))[0];
     return {
       kind: CONSENT_KINDS[0],
-      teeth: v?.diagnoses.map((d) => d.teeth).filter(Boolean).join(', ') || '',
+      teeth: v?.complaintTeeth || v?.diagnoses.map((d) => d.teeth).filter(Boolean).join(', ') || '',
       procedure: v?.treatment || '',
       diagnoses: v?.diagnoses || [],
       risks: tpl(CONSENT_KINDS[0]),
       alternatives: DEFAULT_TEMPLATES.find((t) => t.id === 'tl1')?.text || '',
       anesthesia: v?.anesthesia || 'ადგილობრივი (ინფილტრაციული/გამტარებლობითი)',
-      cost: '',
+      cost: v ? String(v.procedures.reduce((s, p) => s + p.qty * p.price, 0) || '') : '',
     };
   },
   onChange: (key, value, data) => (key === 'kind' ? { ...data, kind: value, risks: tpl(value) || data.risks } : { ...data, [key]: value }),
   Print: ({ doc, c }) => {
     const d = doc.data;
     const p = c.patient;
-    const minor = isMinor(p);
+    const rep = needsRepresentative(p);
+    const teen = !rep && isMinor(p);
     return (
       <div className="print-sheet">
-        <SheetHeader clinic={c.clinic} right={<DocNo doc={doc} />} />
-        <h1>პაციენტის ინფორმირებული თანხმობა</h1>
-        <p style={{ textAlign: 'center', fontWeight: 700 }}>{d.kind}</p>
-        <PatientTable
-          p={p}
-          extra={
-            minor || p.guardianName ? (
-              <tr>
-                <td colSpan={2}>
-                  <b>კანონიერი წარმომადგენელი:</b> {p.guardianName} {p.guardianRelation && `(${p.guardianRelation})`} {p.guardianIdNumber && `· პ/ნ ${p.guardianIdNumber}`}
-                </td>
-              </tr>
-            ) : undefined
-          }
-        />
-        <p>
-          მე, <b>{signerName(p)}</b>, ვადასტურებ, რომ ექიმმა <b>{doctorLine(c.doctor)}</b> ჩემთვის გასაგებ ენაზე მომაწოდა სრული, ობიექტური და დროული ინფორმაცია:
-        </p>
-        <Box label="დიაგნოზი / ჯანმრთელობის მდგომარეობა:" value={<Diags list={d.diagnoses} />} />
-        <Box label={`დაგეგმილი სამედიცინო მომსახურება${d.teeth ? ` (კბ. ${d.teeth})` : ''}:`} value={d.procedure} />
-        <Box label="ანესთეზია:" value={d.anesthesia} />
-        <Box label="შესაძლო რისკები და გართულებები:" value={d.risks} />
-        <Box label="ალტერნატიული მეთოდები და მკურნალობაზე უარის შესაძლო შედეგები:" value={d.alternatives} />
-        {d.cost && <Row label="სავარაუდო ღირებულება:" value={`${d.cost} ₾`} />}
-        <div className="small" style={{ marginTop: 8 }}>
-          <p>ვადასტურებ, რომ:</p>
-          <ul style={{ paddingLeft: 18, listStyle: 'disc' }}>
-            <li>მქონდა შესაძლებლობა დამესვა კითხვები და მივიღე ამომწურავი პასუხები;</li>
-            <li>ექიმს მივაწოდე სრული ინფორმაცია ჩემი ჯანმრთელობის მდგომარეობის, ალერგიის, მიღებული მედიკამენტების{p.sex === 'F' ? ' და ორსულობის' : ''} შესახებ;</li>
-            <li>ვიცი, რომ მკურნალობის შედეგი არ შეიძლება იყოს 100%-ით გარანტირებული და ორგანიზმის ინდივიდუალური რეაქცია შეიძლება განსხვავდებოდეს;</li>
-            <li>ვაცნობიერებ, რომ მანიპულაციის მიმდინარეობისას გაუთვალისწინებელი გარემოების დადგომისას ექიმი იმოქმედებს ჩემი ჯანმრთელობის ინტერესებიდან გამომდინარე;</li>
-            <li>მაქვს უფლება ნებისმიერ ეტაპზე უარი ვთქვა მომსახურებაზე, რისი შედეგებიც ამიხსნეს.</li>
-          </ul>
-          <p style={{ marginTop: 6 }}>
-            ნებაყოფლობით <b>ვაცხადებ თანხმობას</b> ზემოაღნიშნულ სამედიცინო მომსახურებაზე.
-          </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #000', paddingBottom: 4 }} className="small">
+          <div>
+            <b>{c.clinic.legalName || c.clinic.name}</b>
+            <div>სტომატოლოგიური მომსახურების მიმწოდებელი პირის/დაწესებულების დასახელება</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <b>ფორმა №IV-220-2/ა</b>
+            <div>
+              № {doc.number} · ბარათი №{p.cardNumber}
+            </div>
+          </div>
         </div>
-        <Signatures left={`${minor ? 'კანონიერი წარმომადგენელი' : 'პაციენტი'}: ${signerName(p)}`} center={`ექიმი: ${doctorLine(c.doctor)}`} right={`თარიღი: ${fmtDate(doc.date)}`} />
-        <FooterNote clinic={c.clinic}>საფუძველი: საქართველოს კანონი „პაციენტის უფლებების შესახებ“, მუხლები 18, 22–25.</FooterNote>
+        <h1 style={{ marginTop: 14 }}>{CONSENT_220_2.title}</h1>
+        <div className="row" style={{ marginTop: 14 }}>
+          <span className="lbl">მე</span>
+          <span className="val">{rep ? `${signerName(p)} — კანონიერი წარმომადგენელი; პაციენტი: ${patientName(p)}, დაბ. ${fmtDate(p.birthDate)}` : `${patientName(p)} (პ/ნ ${p.idNumber || '—'})`}</span>
+        </div>
+        <p className="small" style={{ textAlign: 'center', marginTop: -2 }}>
+          (სახელი, გვარი)
+        </p>
+        <p style={{ marginTop: 8, textAlign: 'justify' }}>{CONSENT_220_2.patientText}</p>
+        <div className="row" style={{ marginTop: 18 }}>
+          <span className="lbl">პაციენტის (ან პაციენტის კანონიერი წარმომადგენლის) ხელმოწერა</span>
+          <span className="val"></span>
+        </div>
+        <div className="row" style={{ marginTop: 22 }}>
+          <span className="lbl">მე, ექიმი</span>
+          <span className="val">{c.doctor ? userName(c.doctor) : ''}</span>
+        </div>
+        <p className="small" style={{ textAlign: 'center', marginTop: -2 }}>
+          (სახელი, გვარი)
+        </p>
+        <p style={{ marginTop: 8, textAlign: 'justify' }}>{CONSENT_220_2.doctorText}</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18 }}>
+          <div className="row" style={{ flex: 1 }}>
+            <span className="lbl">ხელმოწერა</span>
+            <span className="val" style={{ maxWidth: 200 }}></span>
+          </div>
+          <div>
+            <span className="lbl">თარიღი</span> „{doc.date.slice(8, 10)}“ {fmtDate(doc.date).slice(3)}
+          </div>
+        </div>
+        {teen && (
+          <p className="small" style={{ marginTop: 10 }}>
+            პაციენტი 16 წელს მიღწეული არასრულწლოვანია და თანხმობას აცხადებს თავად; გადაწყვეტილების შესახებ ეცნობა ნათესავს/კანონიერ წარმომადგენელს: {p.guardianName || '________________'} (მუხ. 41.3).
+          </p>
+        )}
+        <h2 style={{ marginTop: 20, borderTop: '1px solid #000', paddingTop: 8 }}>მიწოდებული ინფორმაცია (ფორმის დამატება, ბრძანება №01-55/ნ, მუხ. 1.4)</h2>
+        <Row label="სამედიცინო მომსახურება:" value={`${d.kind}${d.teeth ? `, კბ. ${d.teeth}` : ''}`} />
+        <Box label="დიაგნოზი:" value={<Diags list={d.diagnoses} />} />
+        <Box label="მიზანი და მიმდინარეობა:" value={d.procedure} />
+        <Row label="ანესთეზია:" value={d.anesthesia} />
+        <Box label="თავისებურებანი და შესაძლო გართულებები:" value={d.risks} />
+        <Box label="ალტერნატიული მეთოდები; უარის შემთხვევაში დამდგარი შედეგი:" value={d.alternatives} />
+        {d.cost && <Row label="ღირებულება:" value={`${d.cost} ₾`} />}
       </div>
     );
   },
@@ -271,7 +349,7 @@ const pdConsent: DocType = {
   title: 'თანხმობა პერსონალური მონაცემების დამუშავებაზე',
   group: 'თანხმობები',
   description: 'ჯანმრთელობასთან დაკავშირებული (განსაკუთრებული კატეგორიის) მონაცემების დამუშავებაზე წერილობითი თანხმობა.',
-  legal: 'საქართველოს კანონი „პერსონალურ მონაცემთა დაცვის შესახებ“ (2023) — განსაკუთრებული კატეგორიის მონაცემების დამუშავება; „პაციენტის უფლებების შესახებ“ — კონფიდენციალურობა.',
+  legal: 'საქართველოს კანონი „პერსონალურ მონაცემთა დაცვის შესახებ“; „პაციენტის უფლებების შესახებ“ კანონი, მუხ. 27–28 (კონფიდენციალობა). არასავალდებულო, დამატებითი ფორმა.',
   fields: [
     { key: 'purposes', label: 'დამუშავების მიზნები', kind: 'textarea', full: true, rows: 3 },
     { key: 'sharing', label: 'მონაცემების მიმღებები', kind: 'textarea', full: true, rows: 2 },
@@ -295,7 +373,7 @@ const pdConsent: DocType = {
         <PatientTable p={p} />
         <p>
           მე, <b>{signerName(p)}</b>, „პერსონალურ მონაცემთა დაცვის შესახებ“ საქართველოს კანონის შესაბამისად, ვაცხადებ თანხმობას, რომ <b>{c.clinic.legalName || c.clinic.name}</b>
-          {c.clinic.taxId && ` (ს/კ ${c.clinic.taxId})`} დაამუშაოს ჩემი{isMinor(p) ? ' (ჩემი შვილის/მეურვეობის ქვეშ მყოფის)' : ''} პერსონალური მონაცემები, მათ შორის ჯანმრთელობასთან დაკავშირებული განსაკუთრებული კატეგორიის მონაცემები.
+          {c.clinic.taxId && ` (ს/კ ${c.clinic.taxId})`} დაამუშაოს ჩემი{needsRepresentative(p) ? ' (ჩემი შვილის/მეურვეობის ქვეშ მყოფის)' : ''} პერსონალური მონაცემები, მათ შორის ჯანმრთელობასთან დაკავშირებული განსაკუთრებული კატეგორიის მონაცემები.
         </p>
         <Box label="დამუშავების მიზნები:" value={d.purposes} />
         <Box label="მონაცემების შესაძლო მიმღებები:" value={d.sharing} />
@@ -307,7 +385,7 @@ const pdConsent: DocType = {
           ჩემთვის ცნობილია, რომ მაქვს უფლება მოვითხოვო ინფორმაცია ჩემი მონაცემების დამუშავების შესახებ, მათი გაცნობა, ასლის მიღება, გასწორება, განახლება და დამუშავების შეწყვეტა, ასევე თანხმობის
           გამოხმობა, გარდა იმ შემთხვევებისა, როდესაც მონაცემების შენახვა სავალდებულოა კანონით (სამედიცინო დოკუმენტაცია). საჩივრის შეტანა შესაძლებელია პერსონალურ მონაცემთა დაცვის სამსახურში.
         </p>
-        <Signatures left={`${isMinor(p) ? 'კანონიერი წარმომადგენელი' : 'პაციენტი'}: ${signerName(p)}`} right={`თარიღი: ${fmtDate(doc.date)}`} />
+        <Signatures left={`${signerRole(p)}: ${signerName(p)}`} right={`თარიღი: ${fmtDate(doc.date)}`} />
         <FooterNote clinic={c.clinic} />
       </div>
     );
@@ -319,7 +397,7 @@ const refusal: DocType = {
   title: 'უარი სამედიცინო მომსახურებაზე',
   group: 'თანხმობები',
   description: 'პაციენტის წერილობითი უარი შეთავაზებულ კვლევაზე/მკურნალობაზე, შედეგების განმარტებით.',
-  legal: 'საქართველოს კანონი „პაციენტის უფლებების შესახებ“ — მუხ. 22: ქმედუნარიან პაციენტს უფლება აქვს უარი თქვას სამედიცინო მომსახურებაზე.',
+  legal: '„პაციენტის უფლებების შესახებ“ კანონი, მუხ. 23: ქმედუნარიან პაციენტს უფლება აქვს მკურნალობის ნებისმიერ ეტაპზე უარი განაცხადოს სამედიცინო მომსახურებაზე; იგი ამომწურავად უნდა იყოს ინფორმირებული უარის მოსალოდნელი შედეგების შესახებ.',
   fields: [
     { key: 'service', label: 'სამედიცინო მომსახურება, რაზეც პაციენტი უარს აცხადებს', kind: 'textarea', category: 'treatment', full: true, required: true },
     { key: 'consequences', label: 'უარის შესაძლო შედეგები (განმარტებულია პაციენტისთვის)', kind: 'textarea', category: 'consentAlternatives', full: true, rows: 4 },
@@ -341,7 +419,7 @@ const refusal: DocType = {
         <Box label="უარის შესაძლო შედეგები, რომლებიც ამიხსნეს:" value={d.consequences} />
         {d.reason && <Box label="უარის მიზეზი:" value={d.reason} />}
         <p className="small">ვადასტურებ, რომ შედეგებზე პასუხისმგებლობას ვიღებ საკუთარ თავზე და კლინიკას პრეტენზია არ მაქვს.</p>
-        <Signatures left={`${isMinor(p) ? 'კანონიერი წარმომადგენელი' : 'პაციენტი'}: ${signerName(p)}`} center={`ექიმი: ${doctorLine(c.doctor)}`} right={`თარიღი: ${fmtDate(doc.date)}`} />
+        <Signatures left={`${signerRole(p)}: ${signerName(p)}`} center={`ექიმი: ${doctorLine(c.doctor)}`} right={`თარიღი: ${fmtDate(doc.date)}`} />
         <FooterNote clinic={c.clinic} />
       </div>
     );
@@ -353,7 +431,7 @@ const referral: DocType = {
   title: 'მიმართვა კონსულტაციაზე / კვლევაზე',
   group: 'ცნობები და მიმართვები',
   description: 'მიმართვა სხვა სპეციალისტთან, დაწესებულებაში, ლაბორატორიაში ან რადიოლოგიურ კვლევაზე.',
-  legal: 'სამედიცინო დოკუმენტაციის წარმოების წესი (№338/ნ); „ჯანმრთელობის დაცვის შესახებ“ საქართველოს კანონი.',
+  legal: 'შიდა ფორმა (ბრძანება №01-55/ნ, მუხ. 1.4 — მიმწოდებელი უფლებამოსილია შემოიღოს დამატებითი ფორმები).',
   fields: [
     { key: 'to', label: 'ვის / სად', kind: 'text', full: true, required: true },
     { key: 'type', label: 'მიმართვის ტიპი', kind: 'select', options: ['კონსულტაცია', 'რადიოლოგიური კვლევა', 'ლაბორატორიული კვლევა', 'ჰოსპიტალიზაცია', 'მკურნალობის გაგრძელება'] },
@@ -393,7 +471,7 @@ const extract: DocType = {
   title: 'ამონაწერი სამედიცინო ბარათიდან',
   group: 'ცნობები და მიმართვები',
   description: 'ამონაწერი ამბულატორიული სტომატოლოგიური ბარათიდან — ჩატარებული მკურნალობის სრული ისტორია.',
-  legal: '„პაციენტის უფლებების შესახებ“ საქართველოს კანონი — მუხ. 18: პაციენტს უფლება აქვს მიიღოს ინფორმაცია და ასლი მისი სამედიცინო დოკუმენტაციიდან.',
+  legal: 'ბრძანება №01-55/ნ, მუხ. 1.5: პაციენტს, ხოლო მისი თანხმობის ან ქმედუუნარობის შემთხვევაში — ნათესავს ან კანონიერ წარმომადგენელს, უფლება აქვს მოითხოვოს სტომატოლოგიური სამედიცინო დოკუმენტაციის ან მისი ცალკეული ფორმის ასლი.',
   fields: [
     { key: 'period', label: 'პერიოდი', kind: 'text', full: true },
     { key: 'diagnoses', label: 'დიაგნოზები', kind: 'diagnoses', full: true },
@@ -467,7 +545,7 @@ const xrayReport: DocType = {
   title: 'რენტგენოლოგიური კვლევის დასკვნა',
   group: 'ცნობები და მიმართვები',
   description: 'რენტგენოლოგიური/CBCT კვლევის ოქმი და დასკვნა.',
-  legal: 'იონიზირებელი გამოსხივების წყაროებთან მუშაობისას დოზის აღრიცხვა — „ბირთვული და რადიაციული უსაფრთხოების შესახებ“ საქართველოს კანონი.',
+  legal: 'შიდა ფორმა (ბრძანება №01-55/ნ, მუხ. 1.4). კვლევის შედეგი აისახება გასინჯვის ფურცელში (ფორმა №IV-220-1/ა) — „კონსულტაცია/გამოკვლევის შედეგი“.',
   fields: [
     { key: 'kind', label: 'კვლევის სახე', kind: 'select', options: Object.values(RADIOLOGY_LABELS) },
     { key: 'studyDate', label: 'კვლევის თარიღი', kind: 'date' },
@@ -507,7 +585,7 @@ const plan: DocType = {
   title: 'მკურნალობის გეგმა და ხარჯთაღრიცხვა',
   group: 'გეგმა და ფინანსები',
   description: 'ეტაპობრივი მკურნალობის გეგმა ფასებით — პაციენტის გასაცნობად და ხელმოსაწერად.',
-  legal: '„პაციენტის უფლებების შესახებ“ — პაციენტს უფლება აქვს წინასწარ მიიღოს ინფორმაცია მომსახურების ღირებულების შესახებ.',
+  legal: '„პაციენტის უფლებების შესახებ“ კანონი, მუხ. 18.1.ა — ინფორმაცია მომსახურების საფასურისა და ანაზღაურების ფორმების შესახებ.',
   fields: [
     { key: 'diagnoses', label: 'დიაგნოზები', kind: 'diagnoses', full: true },
     { key: 'items', label: 'გეგმის პუნქტები', kind: 'items', full: true },

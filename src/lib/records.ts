@@ -27,17 +27,24 @@ export function validatePatient(p: Partial<Patient>): Record<string, string> {
   return e;
 }
 
-/** ბარათის ნომერი ენიჭება ერთხელ რეგისტრაციისას და არასდროს იცვლება: წელი-რიგითი ნომერი */
-async function newCardNumber() {
-  const year = new Date().getFullYear();
-  const n = await nextCounter(`card:${year}`);
-  return `${year}-${String(n).padStart(4, '0')}`;
+/**
+ * ბარათის ნომერი (ბრძანება №01-55/ნ, მუხ. 2.3): პირადი ნომრის მიხედვით; პირადი ნომრის არქონისას —
+ * რეგისტრაციის ჟურნალის (ფორმა №IV-220-3/ა) რიგითი ნომრით. ჟურნალის ნომერი რეზერვდება და
+ * გამოიყენება პაციენტის პირველი ვიზიტის ჩანაწერისთვის ჟურნალში.
+ */
+async function cardFor(p: Pick<Patient, 'idType' | 'idNumber'>): Promise<Pick<Patient, 'cardNumber' | 'cardSource' | 'reservedJournalNo'>> {
+  if (p.idType === 'GE' && isValidGeId(p.idNumber)) return { cardNumber: p.idNumber, cardSource: 'personalId', reservedJournalNo: undefined };
+  const n = await nextCounter('journal');
+  return { cardNumber: String(n), cardSource: 'journal', reservedJournalNo: n };
 }
 
-export async function createPatient(data: Omit<Patient, 'id' | 'cardNumber' | 'createdAt' | 'updatedAt' | 'createdBy'>, userId: string) {
+export async function createPatient(
+  data: Omit<Patient, 'id' | 'cardNumber' | 'cardSource' | 'reservedJournalNo' | 'createdAt' | 'updatedAt' | 'createdBy'>,
+  userId: string,
+) {
   const dup = await findByIdNumber(data.idNumber);
   if (dup && data.idType !== 'NONE') throw new DuplicatePatientError(dup);
-  const p: Patient = { ...data, id: uid(), cardNumber: await newCardNumber(), createdAt: nowIso(), updatedAt: nowIso(), createdBy: userId };
+  const p: Patient = { ...data, id: uid(), ...(await cardFor(data)), createdAt: nowIso(), updatedAt: nowIso(), createdBy: userId };
   await db.patients.add(p);
   await audit('CREATE', 'Patient', p.id, `პაციენტის რეგისტრაცია: ${patientName(p)}, ბარათი №${p.cardNumber}`, p.id);
   return p;
@@ -50,35 +57,75 @@ export async function updatePatient(id: string, patch: Partial<Patient>) {
     const dup = await findByIdNumber(patch.idNumber, id);
     if (dup) throw new DuplicatePatientError(dup);
   }
-  const { cardNumber: _ignored, id: _id, createdAt: _c, ...safe } = patch as Patient;
+  const { cardNumber: _ignored, cardSource: _cs, reservedJournalNo: _r, id: _id, createdAt: _c, ...safe } = patch as Patient;
+  const next = { ...cur, ...safe };
+  // ბარათის ნომერი მიჰყვება პირად ნომერს (მაგ. შესწორების ან პირადი ნომრის მოგვიანებით მიღების შემთხვევაში)
+  let card: Partial<Patient> = {};
+  if (next.idType === 'GE' && isValidGeId(next.idNumber)) {
+    if (cur.cardNumber !== next.idNumber) card = { cardNumber: next.idNumber, cardSource: 'personalId', reservedJournalNo: undefined };
+  } else if (cur.cardSource === 'personalId') {
+    card = await cardFor(next);
+  }
   const changed = Object.keys(safe).filter((k) => JSON.stringify((cur as any)[k]) !== JSON.stringify((safe as any)[k]));
-  await db.patients.update(id, { ...safe, updatedAt: nowIso() });
+  await db.patients.update(id, { ...safe, ...card, updatedAt: nowIso() });
   if (changed.length) await audit('UPDATE', 'Patient', id, `შეიცვალა ველები: ${changed.join(', ')}`, id);
+  if (card.cardNumber) await audit('UPDATE', 'Patient', id, `ბარათის ნომერი: ${cur.cardNumber} → ${card.cardNumber}`, id);
 }
 
-export async function newVisit(patientId: string, doctorId: string, userId: string): Promise<Visit> {
+const emptyVisit = {
+  complaintFlags: [] as string[],
+  complaintTeeth: '',
+  complaintsOther: '',
+  complaints: '',
+  anamnesisMorbi: '',
+  anamnesisVitae: '',
+  externalExam: '',
+  intraoralExam: '',
+  bite: '',
+  mucosa: '',
+  perioFlags: [] as string[],
+  plaqueFlags: [] as string[],
+  pocketDepth: '',
+  perioOther: '',
+  hygieneIndex: '',
+  examPlan: [] as string[],
+  examPlanOther: '',
+  extraExams: '',
+  diagnoses: [],
+  treatment: '',
+  procedures: [],
+  anesthesia: '',
+  recommendations: '',
+  prescriptionNo: '',
+  outcome: '',
+};
+
+/** ახალი შემთხვევა (initial) ან განმეორებითი ვიზიტი არსებულ შემთხვევაზე (followup) */
+export async function newVisit(patientId: string, doctorId: string, userId: string, caseOf?: Visit): Promise<Visit> {
   const n = await nextCounter(`visit:${patientId}`);
+  const patient = await db.patients.get(patientId);
+  let journalNo: number;
+  if (patient?.reservedJournalNo) {
+    journalNo = patient.reservedJournalNo;
+    await db.patients.update(patientId, { reservedJournalNo: undefined });
+  } else journalNo = await nextCounter('journal');
+  const caseNo = caseOf ? caseOf.caseNo : await nextCounter(`case:${patientId}`);
+  const id = uid();
   const v: Visit = {
-    id: uid(),
+    ...emptyVisit,
+    id,
     patientId,
+    kind: caseOf ? 'followup' : 'initial',
+    caseId: caseOf ? caseOf.caseId : id,
+    caseNo,
     visitNo: n,
+    journalNo,
     date: todayStr(),
     time: timeStr(),
     doctorId,
-    visitType: n === 1 ? 'first' : 'repeat',
-    complaints: '',
-    anamnesisMorbi: '',
-    anamnesisVitae: '',
-    externalExam: '',
-    intraoralExam: '',
-    bite: '',
-    hygieneIndex: '',
-    extraExams: '',
-    diagnoses: [],
-    treatment: '',
+    visitType: caseOf ? 'repeat' : n === 1 ? 'first' : 'repeat',
+    diagnoses: caseOf ? caseOf.diagnoses.map((d) => ({ ...d })) : [],
     procedures: [],
-    anesthesia: '',
-    recommendations: '',
     status: 'draft',
     addenda: [],
     createdAt: nowIso(),
@@ -86,7 +133,7 @@ export async function newVisit(patientId: string, doctorId: string, userId: stri
     createdBy: userId,
   };
   await db.visits.add(v);
-  await audit('CREATE', 'Visit', v.id, `ვიზიტი №${n} შეიქმნა`, patientId);
+  await audit('CREATE', 'Visit', v.id, caseOf ? `შემთხვევა №${caseNo} — განმეორებითი ვიზიტი №${n}` : `ახალი შემთხვევა №${caseNo} (ფორმა IV-220-1/ა), ვიზიტი №${n}`, patientId);
   return v;
 }
 

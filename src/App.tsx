@@ -49,7 +49,7 @@ const NAV = [
   { id: '', label: 'მთავარი', icon: LayoutDashboard },
   { id: 'patients', label: 'პაციენტები', icon: Users },
   { id: 'appointments', label: 'ჩაწერები', icon: CalendarDays },
-  { id: 'journal', label: 'დოკუმენტების ჟურნალი', icon: FileStack },
+  { id: 'journal', label: 'ჟურნალები (IV-220-3/ა)', icon: FileStack },
   { id: 'templates', label: 'შაბლონები', icon: FileText },
   { id: 'settings', label: 'პარამეტრები', icon: SettingsIcon },
 ];

@@ -107,7 +107,7 @@ export function PatientPage({ patientId, tab, sub }: { patientId: string; tab?: 
             </div>
             <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-600">
               <span className="flex items-center gap-1">
-                <ClipboardList className="w-4 h-4 text-slate-400" /> ბარათი №<b className="font-mono">{patient.cardNumber}</b>
+                <ClipboardList className="w-4 h-4 text-slate-400" /> ბარათი (IV-220/ა) №<b className="font-mono">{patient.cardNumber}</b>
               </span>
               <span className="flex items-center gap-1">
                 <IdCard className="w-4 h-4 text-slate-400" />
@@ -125,7 +125,7 @@ export function PatientPage({ patientId, tab, sub }: { patientId: string; tab?: 
               რედაქტირება
             </Button>
             <Button icon={<Printer className="w-4 h-4" />} onClick={() => setCardOpen(true)}>
-              ბარათის ბეჭდვა
+              ბარათის ბეჭდვა (IV-220/ა)
             </Button>
             {can('admin') && (
               <>
@@ -166,7 +166,7 @@ export function PatientPage({ patientId, tab, sub }: { patientId: string; tab?: 
         onChange={setTab}
         tabs={[
           { id: 'overview', label: 'მიმოხილვა', icon: <UserIcon className="w-4 h-4" /> },
-          { id: 'visits', label: 'ვიზიტები / დღიური', icon: <Stethoscope className="w-4 h-4" />, count: counts.visits },
+          { id: 'visits', label: 'გასინჯვის ფურცლები (IV-220-1/ა)', icon: <Stethoscope className="w-4 h-4" />, count: counts.visits },
           { id: 'odontogram', label: 'ოდონტოგრამა', icon: <Smile className="w-4 h-4" /> },
           { id: 'radiology', label: 'რადიოლოგია', icon: <Scan className="w-4 h-4" />, count: counts.radiology },
           { id: 'documents', label: 'დოკუმენტები / ფორმები', icon: <FileText className="w-4 h-4" />, count: counts.documents },

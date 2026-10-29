@@ -1,132 +1,135 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { db, useLive } from '../../lib/db';
-import type { MedDocument, OdontogramSnapshot, Patient } from '../../lib/types';
+import type { ClinicSettings, MedDocument, Patient } from '../../lib/types';
 import { RADIOLOGY_LABELS } from '../../lib/types';
 import { PrintPreview } from '../../components/Print';
-import { Box, Row, SheetHeader, Signatures } from '../../documents/common';
-import { ageOf, fmtDate, patientName, userName } from '../../lib/utils';
-import { diagnosisLine } from '../../components/clinical';
+import { fmtDate, userName } from '../../lib/utils';
 import { usePatientCtx } from './Documents';
-import { OdontogramChart, OdontogramTable } from './Odontogram';
-import { VisitSheet } from './Visits';
+import { CaseSheet, groupCases } from './Visits';
+import { LEGAL } from '../../data/forms220';
 
-/** ამბულატორიული სტომატოლოგიური პაციენტის სამედიცინო ბარათი — ყველა მონაცემი ერთ დოკუმენტად */
+/** ფორმა №IV-220/ა „სტომატოლოგიური პაციენტის სამედიცინო ბარათი“ — ბრძანება №01-55/ნ, დანართი №1 */
+export function Form220Sheet({ patient: p, clinic }: { patient: Patient; clinic: ClinicSettings }) {
+  const line = (label: string, value?: React.ReactNode, wide?: boolean) => (
+    <div className="row" style={wide ? { flexDirection: 'column', gap: 2 } : undefined}>
+      <span className="lbl" style={{ fontWeight: 400 }}>
+        {label}
+      </span>
+      <span className="val" style={wide ? { minHeight: '3.6em' } : undefined}>
+        {value || ' '}
+      </span>
+    </div>
+  );
+  return (
+    <div className="print-sheet">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div className="small" style={{ borderTop: '1px solid #000', paddingTop: 2, minWidth: 260 }}>
+          <b style={{ fontSize: '11pt' }}>{clinic.legalName || clinic.name}</b>
+          <div>სტომატოლოგიური მომსახურების მიმწოდებელი</div>
+          <div>პირის/დაწესებულების დასახელება</div>
+        </div>
+        <b className="small">ფორმა №IV-220/ა</b>
+      </div>
+      <h1 style={{ marginTop: 28 }}>სტომატოლოგიური პაციენტის სამედიცინო ბარათი №{p.cardNumber}</h1>
+      <p className="small" style={{ textAlign: 'center' }}>
+        {p.cardSource === 'personalId' ? 'ნომერი მინიჭებულია პირადი ნომრის მიხედვით' : 'ნომერი მინიჭებულია რეგისტრაციის ჟურნალის (ფორმა №IV-220-3/ა) რიგითი ნომრით'} · ბარათი გახსნილია {fmtDate(p.createdAt.slice(0, 10))}
+      </p>
+      <div style={{ marginTop: 18 }}>
+        {line('გვარი, სახელი', `${p.lastName} ${p.firstName}${p.fatherName ? ` (მამის სახ. ${p.fatherName})` : ''}`)}
+        {line('სქესი', p.sex === 'M' ? 'მამრობითი' : 'მდედრობითი')}
+        <div style={{ display: 'flex', gap: 24 }}>
+          <div style={{ flex: 1 }}>{line('დაბადების თარიღი', fmtDate(p.birthDate))}</div>
+          <div style={{ flex: 1 }}>{line('ტელეფონი', [p.phone, p.phone2].filter(Boolean).join(', '))}</div>
+        </div>
+        {line('პირადი ნომერი (ასეთის არსებობის შემთხვევაში)', p.idType === 'GE' ? p.idNumber : p.idType === 'PASSPORT' ? `— (პასპორტი: ${p.idNumber}, ${p.citizenship})` : '—')}
+        {line('მისამართი', p.address)}
+        {line('სამუშაო ადგილი', p.workplace)}
+        {p.guardianName && line('მშობელი / კანონიერი წარმომადგენელი', `${p.guardianName}${p.guardianRelation ? ` (${p.guardianRelation})` : ''}${p.guardianIdNumber ? `, პ/ნ ${p.guardianIdNumber}` : ''}${p.guardianPhone ? `, ტელ. ${p.guardianPhone}` : ''}`)}
+        <div style={{ marginTop: 18 }}>{line('ალერგია (მათ შორის – საანესთეზიო საშუალებებზე)', p.allergies || 'არ აღენიშნება', true)}</div>
+        {line('გადატანილი ან/და თანმხლები დაავადებები, მდგომარეობები:', [p.chronicDiseases, p.medications && `მუდმივად იღებს: ${p.medications}`, p.riskFlags.length ? `რისკ-ფაქტორები: ${p.riskFlags.join(', ')}` : '', p.bloodGroup && `სისხლის ჯგუფი: ${p.bloodGroup}`].filter(Boolean).join('\n'), true)}
+        <div style={{ marginTop: 18 }}>{line('სადაზღვევო პოლისის ნომერი (ასეთის არსებობის შემთხვევაში)', p.insurancePolicy)}</div>
+        {line('სადაზღვევო კომპანია (ასეთის არსებობის შემთხვევაში)', p.insurance)}
+      </div>
+      <p className="small" style={{ marginTop: 30, color: '#444' }}>
+        {LEGAL.order0155}. დოკუმენტაცია წარმოებულია ელექტრონული საშუალებით (მუხ. 1.2).
+      </p>
+    </div>
+  );
+}
+
+/** სრული ბარათი: IV-220/ა + ყველა გასინჯვის ფურცელი (IV-220-1/ა) + გაცემული დოკუმენტების ნუსხა */
 export function MedicalCardPrint({ open, onClose, patient }: { open: boolean; onClose: () => void; patient: Patient }) {
   const { clinic, staff, visits, radiology } = usePatientCtx(patient);
   const docs = useLive(() => db.documents.where('patientId').equals(patient.id).toArray(), [patient.id], [] as MedDocument[]) as MedDocument[];
-  const odo = (useLive(() => db.odontograms.where('patientId').equals(patient.id).toArray(), [patient.id], [] as OdontogramSnapshot[]) as OdontogramSnapshot[]).sort(
-    (a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id),
-  )[0];
-  const sorted = [...visits].sort((a, b) => a.visitNo - b.visitNo);
-  const diag = sorted.flatMap((v) => v.diagnoses.map((d) => ({ ...d, date: v.date }))).filter((d) => d.code);
+  const cases = useMemo(() => groupCases(visits).reverse(), [visits]);
   if (!open) return null;
   return (
-    <PrintPreview open={open} onClose={onClose} title={`სამედიცინო ბარათი №${patient.cardNumber} — ${patientName(patient)}`}>
+    <PrintPreview open={open} onClose={onClose} title={`ფორმა №IV-220/ა — ბარათი №${patient.cardNumber}`}>
       <div>
-        <div className="print-sheet">
-          <SheetHeader clinic={clinic} right={<div>ბარათი № {patient.cardNumber}</div>} />
-          <h1>ამბულატორიული სტომატოლოგიური პაციენტის სამედიცინო ბარათი</h1>
-          <p style={{ textAlign: 'center' }} className="small">
-            ბარათი გახსნილია: {fmtDate(patient.createdAt.slice(0, 10))}
-          </p>
-          <h2>1. პაციენტის მონაცემები</h2>
-          <Row label="გვარი, სახელი, მამის სახელი:" value={`${patientName(patient)} ${patient.fatherName || ''}`} />
-          <Row label={patient.idType === 'PASSPORT' ? 'პასპორტის №:' : 'პირადი ნომერი:'} value={patient.idNumber} />
-          <Row label="დაბადების თარიღი, ასაკი, სქესი:" value={`${fmtDate(patient.birthDate)}, ${ageOf(patient.birthDate)} წ., ${patient.sex === 'M' ? 'მამრობითი' : 'მდედრობითი'}`} />
-          <Row label="მოქალაქეობა:" value={patient.citizenship} />
-          <Row label="მისამართი:" value={patient.address} />
-          <Row label="ტელეფონი:" value={[patient.phone, patient.phone2].filter(Boolean).join(', ')} />
-          <Row label="სამუშაო ადგილი:" value={patient.workplace} />
-          <Row label="დაზღვევა:" value={[patient.insurance, patient.insurancePolicy].filter(Boolean).join(', ')} />
-          {patient.guardianName && <Row label="კანონიერი წარმომადგენელი:" value={`${patient.guardianName} (${patient.guardianRelation || ''}), პ/ნ ${patient.guardianIdNumber || '—'}, ${patient.guardianPhone || ''}`} />}
-          <h2>2. სამედიცინო ანამნეზი</h2>
-          <Row label="ალერგია:" value={patient.allergies || 'არ აღენიშნება'} />
-          <Row label="თანმხლები დაავადებები:" value={patient.chronicDiseases} />
-          <Row label="მედიკამენტები:" value={patient.medications} />
-          <Row label="სისხლის ჯგუფი:" value={patient.bloodGroup} />
-          <Row label="რისკ-ფაქტორები:" value={patient.riskFlags.join(', ')} />
-          <h2>3. დიაგნოზები (ICD-10)</h2>
-          <Box
-            label=""
-            value={
-              diag.length
-                ? diag.map((d, i) => (
-                    <div key={i}>
-                      {fmtDate(d.date)} — {diagnosisLine(d)}
-                    </div>
-                  ))
-                : '—'
-            }
-          />
-          <h2>4. ოდონტოგრამა {odo && `(${fmtDate(odo.date)})`}</h2>
-          {odo ? (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
-                <OdontogramChart teeth={odo.teeth} dentition={odo.dentition} small />
-              </div>
-              <OdontogramTable teeth={odo.teeth} />
-            </>
-          ) : (
-            <p className="small">არ არის შევსებული.</p>
-          )}
-          <h2>5. რენტგენოლოგიური კვლევები / სხივური დატვირთვა</h2>
-          {radiology.length ? (
-            <table>
-              <thead>
-                <tr>
-                  <th>თარიღი</th>
-                  <th>კვლევა</th>
-                  <th>კბილები</th>
-                  <th>დოზა, მკზვ</th>
-                  <th>დასკვნა</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...radiology]
-                  .sort((a, b) => a.date.localeCompare(b.date))
-                  .map((r) => (
-                    <tr key={r.id}>
-                      <td>{fmtDate(r.date)}</td>
-                      <td>{RADIOLOGY_LABELS[r.kind]}</td>
-                      <td>{r.teeth}</td>
-                      <td>{r.dose}</td>
-                      <td>{r.conclusion}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="small">—</p>
-          )}
-          <h2>6. გაცემული დოკუმენტები</h2>
-          {docs.length ? (
-            <table>
-              <tbody>
-                {[...docs]
-                  .sort((a, b) => a.date.localeCompare(b.date))
-                  .map((d) => (
-                    <tr key={d.id}>
-                      <td>{fmtDate(d.date)}</td>
-                      <td>№{d.number}</td>
-                      <td>
-                        {d.title}
-                        {d.data?.kind ? ` — ${d.data.kind}` : ''}
-                      </td>
-                      <td>{userName(staff.find((s) => s.id === d.doctorId))}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="small">—</p>
-          )}
-          <Signatures left={`სამედიცინო დირექტორი: ${clinic.medicalDirector || ''}`} right="ბ.ა." />
-        </div>
-        {sorted.map((v) => (
-          <div key={v.id} className="page-break" style={{ marginTop: 16 }}>
-            <VisitSheet visit={v} patient={patient} staff={staff} />
+        <Form220Sheet patient={patient} clinic={clinic} />
+        {cases.map((c) => (
+          <div key={c.initial.id} className="page-break" style={{ marginTop: 16 }}>
+            <CaseSheet caseGroup={c} patient={patient} staff={staff} />
           </div>
         ))}
+        {(docs.length > 0 || radiology.length > 0) && (
+          <div className="page-break" style={{ marginTop: 16 }}>
+            <div className="print-sheet" style={{ minHeight: 0 }}>
+              <h1>ბარათზე დართული დოკუმენტები და კვლევები</h1>
+              {docs.length > 0 && (
+                <>
+                  <h2>გაცემული/შედგენილი დოკუმენტები</h2>
+                  <table>
+                    <tbody>
+                      {[...docs]
+                        .sort((a, b) => a.date.localeCompare(b.date))
+                        .map((d) => (
+                          <tr key={d.id}>
+                            <td>{fmtDate(d.date)}</td>
+                            <td>№{d.number}</td>
+                            <td>
+                              {d.title}
+                              {d.data?.kind ? ` — ${d.data.kind}` : ''}
+                            </td>
+                            <td>{userName(staff.find((s) => s.id === d.doctorId))}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+              {radiology.length > 0 && (
+                <>
+                  <h2>რენტგენოლოგიური კვლევები</h2>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>თარიღი</th>
+                        <th>კვლევა</th>
+                        <th>კბილები</th>
+                        <th>დოზა, მკზვ</th>
+                        <th>დასკვნა</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...radiology]
+                        .sort((a, b) => a.date.localeCompare(b.date))
+                        .map((r) => (
+                          <tr key={r.id}>
+                            <td>{fmtDate(r.date)}</td>
+                            <td>{RADIOLOGY_LABELS[r.kind]}</td>
+                            <td>{r.teeth}</td>
+                            <td>{r.dose}</td>
+                            <td>{r.conclusion}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </PrintPreview>
   );

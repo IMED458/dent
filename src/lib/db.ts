@@ -56,6 +56,49 @@ class ClinicDB extends Dexie {
       customIcd: 'code',
       audit: '++id, at, patientId, entityId',
     });
+    // v2: ბრძანება №01-55/ნ — ბარათის ნომერი პირადი ნომრით/ჟურნალის ნომრით, შემთხვევები (IV-220-1/ა), ჟურნალი (IV-220-3/ა)
+    this.version(2)
+      .stores({ visits: 'id, patientId, date, doctorId, caseId, journalNo' })
+      .upgrade(async (tx) => {
+        const kv = tx.table('kv');
+        let j: number = (await kv.get('counter:journal'))?.value || 0;
+        const visits = (await tx.table('visits').toArray()).sort((a: any, b: any) => String(a.createdAt).localeCompare(String(b.createdAt)));
+        const firstJournal = new Map<string, number>();
+        const maxVisit = new Map<string, number>();
+        for (const v of visits) {
+          j += 1;
+          if (!firstJournal.has(v.patientId)) firstJournal.set(v.patientId, j);
+          maxVisit.set(v.patientId, Math.max(maxVisit.get(v.patientId) || 0, v.visitNo || 0));
+          await tx.table('visits').update(v.id, {
+            kind: 'initial',
+            caseId: v.id,
+            caseNo: v.visitNo,
+            journalNo: j,
+            complaintFlags: [],
+            complaintTeeth: '',
+            complaintsOther: '',
+            mucosa: '',
+            perioFlags: [],
+            plaqueFlags: [],
+            pocketDepth: '',
+            perioOther: '',
+            examPlan: [],
+            examPlanOther: '',
+            prescriptionNo: '',
+            outcome: '',
+          });
+        }
+        for (const p of await tx.table('patients').toArray()) {
+          if (p.idType === 'GE' && /^\d{11}$/.test(p.idNumber || '')) {
+            await tx.table('patients').update(p.id, { cardNumber: p.idNumber, cardSource: 'personalId' });
+          } else {
+            const n = firstJournal.get(p.id) ?? ++j;
+            await tx.table('patients').update(p.id, { cardNumber: String(n), cardSource: 'journal', reservedJournalNo: firstJournal.has(p.id) ? undefined : n });
+          }
+        }
+        for (const [pid, n] of maxVisit) await kv.put({ key: `counter:case:${pid}`, value: n });
+        await kv.put({ key: 'counter:journal', value: j });
+      });
   }
 }
 

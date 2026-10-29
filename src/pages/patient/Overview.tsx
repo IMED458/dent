@@ -51,7 +51,7 @@ export function OverviewTab({ patient }: { patient: Patient }) {
       {can('clinical') && (
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" icon={<Stethoscope className="w-4 h-4" />} onClick={startVisit}>
-            ახალი ვიზიტი
+            ახალი შემთხვევა (IV-220-1/ა)
           </Button>
           <Button icon={<ImagePlus className="w-4 h-4" />} onClick={() => navigate('patient', patient.id, 'radiology', 'new')}>
             რენტგენის / ფოტოს ატვირთვა
@@ -60,7 +60,7 @@ export function OverviewTab({ patient }: { patient: Patient }) {
             ფორმა №IV-100/ა
           </Button>
           <Button icon={<FileText className="w-4 h-4" />} onClick={() => navigate('patient', patient.id, 'documents', 'new:consent')}>
-            ინფორმირებული თანხმობა
+            თანხმობა (IV-220-2/ა)
           </Button>
           <Button icon={<CalendarPlus className="w-4 h-4" />} onClick={() => navigate('appointments', `new:${patient.id}`)}>
             ჩაწერა

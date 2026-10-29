@@ -42,8 +42,15 @@ export type IdType = 'GE' | 'PASSPORT' | 'NONE';
 
 export interface Patient {
   id: string;
-  /** სამედიცინო ბარათის (ისტორიის) ნომერი — ენიჭება ერთხელ და არ იცვლება */
+  /**
+   * სტომატოლოგიური პაციენტის სამედიცინო ბარათის (ფორმა №IV-220/ა) ნომერი.
+   * ბრძანება №01-55/ნ, მუხ. 2.3: ენიჭება პირადი ნომრის მიხედვით, ხოლო პირადი ნომრის
+   * არქონისას — რეგისტრაციის ჟურნალში (ფორმა №IV-220-3/ა) დაფიქსირებული რიგითი ნომრის მიხედვით.
+   */
   cardNumber: string;
+  cardSource: 'personalId' | 'journal';
+  /** პირადი ნომრის არმქონე პაციენტისთვის დარეზერვებული ჟურნალის ნომერი (გამოიყენება პირველ ვიზიტზე) */
+  reservedJournalNo?: number;
   idType: IdType;
   /** პირადი ნომერი (11 ციფრი) ან პასპორტის ნომერი */
   idNumber: string;
@@ -102,11 +109,38 @@ export interface Addendum {
   text: string;
 }
 
+/**
+ * ვიზიტი. ბრძანება №01-55/ნ, მუხ. 3: პაციენტის გასინჯვის ფურცელი (ფორმა №IV-220-1/ა) ივსება
+ * ყოველ ახალ შემთხვევაზე; მასში ფიქსირდება პირველადი (kind='initial') და ყველა მომდევნო
+ * (kind='followup') ვიზიტი ერთი შემთხვევის ფარგლებში. caseId = პირველადი ვიზიტის id.
+ */
 export interface Visit {
   id: string;
   patientId: string;
+  kind: 'initial' | 'followup';
+  caseId: string;
+  /** შემთხვევის (გასინჯვის ფურცლის) რიგითი ნომერი ბარათში */
+  caseNo: number;
   /** ვიზიტის რიგითი ნომერი ბარათში */
   visitNo: number;
+  /** რეგისტრაციის ჟურნალის (ფორმა №IV-220-3/ა) რიგითი ნომერი */
+  journalNo: number;
+  complaintFlags: string[];
+  complaintTeeth: string;
+  complaintsOther: string;
+  mucosa: string;
+  perioFlags: string[];
+  plaqueFlags: string[];
+  pocketDepth: string;
+  perioOther: string;
+  examPlan: string[];
+  examPlanOther: string;
+  /** ელექტრონული რეცეპტის ნომერი (ბრძანება №01-16/ნ, 2022) */
+  prescriptionNo: string;
+  /** მკურნალობის შედეგი (ეპიკრიზი) — შემთხვევის დახურვისას */
+  outcome: string;
+  caseClosed?: boolean;
+  caseClosedAt?: string;
   date: string;
   time: string;
   doctorId: string;

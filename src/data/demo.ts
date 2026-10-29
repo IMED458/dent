@@ -3,7 +3,7 @@ import { createPatient, newVisit } from '../lib/records';
 import { hashPin, todayStr } from '../lib/utils';
 import type { Patient, User } from '../lib/types';
 
-const base: Omit<Patient, 'id' | 'cardNumber' | 'createdAt' | 'updatedAt' | 'createdBy' | 'firstName' | 'lastName' | 'idNumber' | 'birthDate' | 'sex'> = {
+const base: Omit<Patient, 'id' | 'cardNumber' | 'cardSource' | 'reservedJournalNo' | 'createdAt' | 'updatedAt' | 'createdBy' | 'firstName' | 'lastName' | 'idNumber' | 'birthDate' | 'sex'> = {
   idType: 'GE',
   fatherName: '',
   citizenship: 'საქართველო',
@@ -47,7 +47,14 @@ export async function loadDemoData(adminId: string) {
 
   const v = await newVisit(p1.id, docId, adminId);
   await db.visits.update(v.id, {
+    complaintTeeth: '36',
+    complaintFlags: ['გამღიზიანებლით გამოწვეული მიზეზობრივი ხასიათის ტკივილი'],
     complaints: 'ხანმოკლე ტკივილი ცივი და ტკბილი საკვების მიღებისას 36 კბილის მიდამოში.',
+    bite: 'ორთოგნათიული',
+    mucosa: 'ფიზიოლოგიური ფერის, ტენიანი',
+    plaqueFlags: ['რბილი', 'ღრძილზედა'],
+    examPlan: ['ანამნეზის შეკრება', 'სახისა და პირის ღრუს დათვალიერება', 'თერმოდიაგნოსტიკა', 'ვიზიორენტგენოგრაფიული გამოკვლევა'],
+    extraExams: 'ვიზიორენტგენოგრაფია: 36 კბილის ოკლუზიურ ზედაპირზე დენტინის ფარგლებში კარიესული ღრუ, პერიაპიკალური ცვლილებების გარეშე.',
     anamnesisVitae: 'ალერგია პენიცილინზე. სხვა თანმხლებ დაავადებებს უარყოფს.',
     externalExam: 'სახე სიმეტრიულია. რეგიონული ლიმფური კვანძები არ ისინჯება.',
     intraoralExam: '36 კბილის ოკლუზიურ ზედაპირზე კარიესული ღრუ დარბილებული დენტინით. ზონდირება მტკივნეულია ემალ-დენტინის საზღვარზე. პერკუსია უმტკივნეულო.',

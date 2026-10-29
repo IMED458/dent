@@ -45,6 +45,16 @@ export function ageLabel(birthDate?: string) {
   return a === null ? '' : `${a} წლის`;
 }
 
+/**
+ * „პაციენტის უფლებების შესახებ“ კანონი, მუხ. 41: 16 წლამდე პაციენტს მომსახურება ეწევა მხოლოდ
+ * მშობლის/კანონიერი წარმომადგენლის თანხმობით; 16 წელს მიღწეული არასრულწლოვანი თავად აცხადებს
+ * თანხმობას, რის შესახებაც ეცნობება ნათესავს ან კანონიერ წარმომადგენელს.
+ */
+export const needsRepresentative = (p: Pick<Patient, 'birthDate'>) => {
+  const a = ageOf(p.birthDate);
+  return a !== null && a < 16;
+};
+
 export const isMinor = (p: Pick<Patient, 'birthDate'>) => {
   const a = ageOf(p.birthDate);
   return a !== null && a < 18;

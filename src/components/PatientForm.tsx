@@ -8,7 +8,7 @@ import { RISK_FLAGS } from '../data/defaults';
 import { ageOf, cls, fmtDate, isValidGeId, patientName } from '../lib/utils';
 import { navigate } from '../lib/router';
 
-type Draft = Omit<Patient, 'id' | 'cardNumber' | 'createdAt' | 'updatedAt' | 'createdBy'>;
+type Draft = Omit<Patient, 'id' | 'cardNumber' | 'cardSource' | 'reservedJournalNo' | 'createdAt' | 'updatedAt' | 'createdBy'>;
 
 const empty: Draft = {
   idType: 'GE',
@@ -65,11 +65,13 @@ export function PatientForm({ open, onClose, patient, initialIdNumber }: { open:
   }, [f.idNumber, f.idType, patient?.id]);
 
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setF((s) => ({ ...s, [k]: v }));
-  const minor = (ageOf(f.birthDate) ?? 99) < 18;
+  const age = ageOf(f.birthDate) ?? 99;
+  const minor = age < 18;
+  const repRequired = age < 16;
 
   const save = async () => {
     const e = validatePatient(f);
-    if (minor && !f.guardianName?.trim()) e.guardianName = 'არასრულწლოვანი პაციენტისთვის სავალდებულოა კანონიერი წარმომადგენელი';
+    if (repRequired && !f.guardianName?.trim()) e.guardianName = '16 წლამდე პაციენტისთვის სავალდებულოა მშობელი/კანონიერი წარმომადგენელი';
     setErrors(e);
     if (Object.keys(e).length) return ui.toast('შეასწორეთ მონიშნული ველები', 'err');
     if (dup) return ui.toast('ამ ნომრით პაციენტი უკვე არსებობს', 'err');
@@ -99,7 +101,7 @@ export function PatientForm({ open, onClose, patient, initialIdNumber }: { open:
       open={open}
       onClose={onClose}
       size="lg"
-      title={patient ? `პაციენტის მონაცემები — ბარათი №${patient.cardNumber}` : 'ახალი პაციენტის რეგისტრაცია'}
+      title={patient ? `სტომატოლოგიური პაციენტის სამედიცინო ბარათი (ფორმა №IV-220/ა) №${patient.cardNumber}` : 'ახალი პაციენტის რეგისტრაცია — ფორმა №IV-220/ა'}
       footer={
         <>
           <Button onClick={onClose}>გაუქმება</Button>
@@ -111,7 +113,10 @@ export function PatientForm({ open, onClose, patient, initialIdNumber }: { open:
     >
       <div className="space-y-5">
         <section>
-          <h4 className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">იდენტიფიკაცია</h4>
+          <h4 className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-1">იდენტიფიკაცია</h4>
+          <p className="text-[11px] text-slate-500 mb-2">
+            ბარათის ნომერი ენიჭება პირადი ნომრის მიხედვით, პირადი ნომრის არქონისას — რეგისტრაციის ჟურნალის (ფორმა №IV-220-3/ა) რიგითი ნომრით (ბრძანება №01-55/ნ, მუხ. 2.3).
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="დოკუმენტის ტიპი">
               <Select value={f.idType} onChange={(e) => set('idType', e.target.value as Draft['idType'])}>
@@ -197,7 +202,7 @@ export function PatientForm({ open, onClose, patient, initialIdNumber }: { open:
             <Field label="მისამართი (ფაქტობრივი)" className="sm:col-span-2">
               <Input value={f.address} onChange={(e) => set('address', e.target.value)} />
             </Field>
-            <Field label="სამუშაო ადგილი, თანამდებობა">
+            <Field label="სამუშაო ადგილი, თანამდებობა (მოსწავლე/სტუდენტი — სასწავლებელი, კლასი/კურსი)">
               <Input value={f.workplace} onChange={(e) => set('workplace', e.target.value)} />
             </Field>
             <Field label="სადაზღვევო კომპანია / პროგრამა">
@@ -211,11 +216,18 @@ export function PatientForm({ open, onClose, patient, initialIdNumber }: { open:
 
         {(minor || f.guardianName) && (
           <section className={cls('rounded-lg p-3', minor ? 'bg-sky-50 border border-sky-200' : '')}>
-            <h4 className="text-xs font-bold uppercase tracking-wide text-sky-700 mb-2">
-              კანონიერი წარმომადგენელი {minor && '(არასრულწლოვანი — სავალდებულო)'}
+            <h4 className="text-xs font-bold uppercase tracking-wide text-sky-700 mb-1">
+              მშობელი / კანონიერი წარმომადგენელი {repRequired ? '(16 წლამდე — სავალდებულო)' : minor ? '(16–18 წელი)' : ''}
             </h4>
+            <p className="text-[11px] text-sky-800 mb-2">
+              {repRequired
+                ? '„პაციენტის უფლებების შესახებ“ კანონი, მუხ. 41.2: 16 წლამდე პაციენტს მომსახურება ეწევა მხოლოდ მშობლის ან კანონიერი წარმომადგენლის თანხმობით.'
+                : minor
+                  ? 'მუხ. 41.3: 16 წელს მიღწეული პაციენტი თავად აცხადებს თანხმობას; გადაწყვეტილების შესახებ ეცნობება ნათესავს ან კანონიერ წარმომადგენელს.'
+                  : ''}
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-              <Field label="სახელი, გვარი" required={minor} error={errors.guardianName}>
+              <Field label="სახელი, გვარი" required={repRequired} error={errors.guardianName}>
                 <Input value={f.guardianName} onChange={(e) => set('guardianName', e.target.value)} />
               </Field>
               <Field label="პირადი ნომერი">
@@ -234,10 +246,10 @@ export function PatientForm({ open, onClose, patient, initialIdNumber }: { open:
         <section>
           <h4 className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">სამედიცინო ანამნეზი და რისკები</h4>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Field label="ალერგია (მედიკამენტები, მასალები)">
+            <Field label="ალერგია (მათ შორის – საანესთეზიო საშუალებებზე)">
               <Textarea rows={2} value={f.allergies} onChange={(e) => set('allergies', e.target.value)} placeholder="არ აღენიშნება / ..." />
             </Field>
-            <Field label="თანმხლები დაავადებები">
+            <Field label="გადატანილი ან/და თანმხლები დაავადებები, მდგომარეობები">
               <Textarea rows={2} value={f.chronicDiseases} onChange={(e) => set('chronicDiseases', e.target.value)} />
             </Field>
             <Field label="მუდმივად მიღებული მედიკამენტები">
