@@ -13,5 +13,11 @@
     <div id="root"></div>
     <div id="print-root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // GitHub Pages ემსახურება საწყის კოდს — გადავდივართ აწყობილ ვერსიაზე (app/). აწყობილ ფაილში ეს პირობა არ სრულდება.
+      if (/\.github\.io$/.test(location.hostname) && document.querySelector('script[src="/src/main.tsx"]')) {
+        location.replace(location.pathname.replace(/\/(index\.html)?$/, '/') + 'app/' + location.hash);
+      }
+    </script>
   </body>
 </html>
