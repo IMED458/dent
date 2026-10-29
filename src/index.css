@@ -1,1 +1,49 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans Georgian", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Noto Serif Georgian", "Noto Sans Georgian", serif;
+}
+
+html, body, #root { height: 100%; }
+body { @apply bg-slate-100 text-slate-800 antialiased; }
+
+/* ---------- Print ---------- */
+.print-sheet {
+  font-family: var(--font-serif);
+  color: #000;
+  background: #fff;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 16mm 15mm 18mm;
+  margin: 0 auto;
+  font-size: 11.5pt;
+  line-height: 1.45;
+  box-shadow: 0 4px 24px rgb(0 0 0 / 0.12);
+}
+.print-sheet h1 { font-size: 14pt; font-weight: 700; text-align: center; margin: 6px 0 2px; }
+.print-sheet h2 { font-size: 12pt; font-weight: 700; margin: 12px 0 4px; }
+.print-sheet table { width: 100%; border-collapse: collapse; }
+.print-sheet td, .print-sheet th { border: 1px solid #333; padding: 3px 6px; vertical-align: top; text-align: left; }
+.print-sheet .row { display: flex; gap: 6px; margin: 3px 0; }
+.print-sheet .lbl { font-weight: 700; white-space: nowrap; }
+.print-sheet .val { flex: 1; border-bottom: 1px dotted #555; min-height: 1.3em; white-space: pre-wrap; }
+.print-sheet .box { border: 1px solid #333; padding: 4px 8px; min-height: 2.2em; white-space: pre-wrap; margin: 2px 0 6px; }
+.print-sheet .sign { display: flex; justify-content: space-between; gap: 24px; margin-top: 28px; }
+.print-sheet .sign > div { flex: 1; border-top: 1px solid #000; padding-top: 3px; font-size: 9.5pt; text-align: center; }
+.print-sheet .small { font-size: 9pt; }
+.page-break { break-before: page; }
+
+@media screen and (max-width: 900px) {
+  .print-sheet { width: 100%; min-height: 0; padding: 18px; }
+}
+
+@media print {
+  @page { size: A4; margin: 0; }
+  body { background: #fff !important; }
+  body.printing #root { display: none !important; }
+  .no-print { display: none !important; }
+  #print-root { display: block !important; }
+  #print-root .print-sheet { box-shadow: none; margin: 0; width: auto; min-height: 0; }
+}
+#print-root { display: none; }

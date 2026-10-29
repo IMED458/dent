@@ -1,6 +1,6 @@
 {
-  "name": "Dental Clinic HIS ERP CRM",
-  "description": "Enterprise Dental Clinic Health Information System, EMR, ERP, and CRM for Georgia",
-  "requestFramePermissions": [],
+  "name": "სტომატოლოგიური კლინიკა — სამედიცინო ბარათი",
+  "description": "სტომატოლოგიური კლინიკის პაციენტების რეესტრი, ელექტრონული სამედიცინო ბარათი, ოდონტოგრამა, რადიოლოგია და საქართველოს კანონმდებლობასთან შესაბამისი სამედიცინო დოკუმენტაცია.",
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

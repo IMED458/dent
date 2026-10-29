@@ -1,491 +1,176 @@
-import React, { useState, useEffect } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { Header } from './components/Header';
-import { PatientsList } from './components/PatientsList';
-import { PatientProfile } from './components/PatientProfile';
-import { DoctorCalendar } from './components/DoctorCalendar';
-import { QueueManager } from './components/QueueManager';
-import { StaffManager } from './components/StaffManager';
-import { PatientRegistrationModal } from './components/PatientRegistrationModal';
-import { CalculationEngine } from './components/CalculationEngine';
-import { FormsManager } from './components/FormsManager';
-import { CashDeskDayClose } from './components/CashDeskDayClose';
-import { SterilizationInfection } from './components/SterilizationInfection';
-import { InventoryFEFO } from './components/InventoryFEFO';
-import { RadiologyViewer } from './components/RadiologyViewer';
-import { AuditLogView } from './components/AuditLogView';
-import { MasterManifestModal } from './components/MasterManifestModal';
-
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  User,
-  RoleName,
-  Patient,
-  OdontogramSnapshot,
-  ToothState,
-  PeriodontalExam,
-  CalculationSheet,
-  CashShift,
-  InventoryItem,
-  SterilizationCycle,
-  AuditLogEntry
-} from './types';
-import { Users, UserPlus, LogIn, Lock, CheckCircle2 } from 'lucide-react';
+  CalendarDays,
+  FileStack,
+  LayoutDashboard,
+  Lock,
+  LogOut,
+  Menu,
+  Settings as SettingsIcon,
+  Stethoscope,
+  Users,
+  FileText,
+  X,
+} from 'lucide-react';
+import { SessionProvider, useSession } from './lib/session';
+import { UiProvider } from './components/ui';
+import { useRoute, navigate } from './lib/router';
+import { useClinic } from './lib/db';
+import { cls, userName } from './lib/utils';
+import { ROLE_LABELS } from './lib/types';
+import { Setup, Login } from './pages/Auth';
+import { Dashboard } from './pages/Dashboard';
+import { PatientsPage } from './pages/Patients';
+import { PatientPage } from './pages/patient/PatientPage';
+import { AppointmentsPage } from './pages/Appointments';
+import { TemplatesPage } from './pages/Templates';
+import { SettingsPage } from './pages/Settings';
+import { JournalPage } from './pages/Journal';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('patients_list');
-  const [selectedBranch, setSelectedBranch] = useState('br-vake');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isManifestOpen, setIsManifestOpen] = useState(false);
-  const [isNewPatientModalOpen, setIsNewPatientModalOpen] = useState(false);
-  const [isLoggedOut, setIsLoggedOut] = useState(false);
+  return (
+    <UiProvider>
+      <SessionProvider>
+        <Root />
+      </SessionProvider>
+    </UiProvider>
+  );
+}
 
-  // App Data State loaded from API
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [doctors, setDoctors] = useState<User[]>([]);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>('');
-  const [odontogramHistory, setOdontogramHistory] = useState<OdontogramSnapshot[]>([]);
-  const [currentOdontogram, setCurrentOdontogram] = useState<OdontogramSnapshot | null>(null);
-  const [periodontalExams, setPeriodontalExams] = useState<PeriodontalExam[]>([]);
-  const [calculations, setCalculations] = useState<CalculationSheet[]>([]);
-  const [currentShift, setCurrentShift] = useState<CashShift | null>(null);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [sterilizationCycles, setSterilizationCycles] = useState<SterilizationCycle[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+function Root() {
+  const { ready, users, user } = useSession();
+  if (!ready) return <div className="h-full flex items-center justify-center text-slate-400">იტვირთება…</div>;
+  if (users.length === 0) return <Setup />;
+  if (!user) return <Login />;
+  return <Shell />;
+}
 
-  // Initial Data Fetching
-  const fetchAllPatients = () => {
-    fetch('/api/patients')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.patients && data.patients.length > 0) {
-          setPatients(data.patients);
-          if (!selectedPatientId) {
-            setSelectedPatientId(data.patients[0].id);
-            fetchOdontogram(data.patients[0].id);
-            fetchPeriodontics(data.patients[0].id);
-          }
-        }
-      })
-      .catch(() => {});
-  };
+const NAV = [
+  { id: '', label: 'მთავარი', icon: LayoutDashboard },
+  { id: 'patients', label: 'პაციენტები', icon: Users },
+  { id: 'appointments', label: 'ჩაწერები', icon: CalendarDays },
+  { id: 'journal', label: 'დოკუმენტების ჟურნალი', icon: FileStack },
+  { id: 'templates', label: 'შაბლონები', icon: FileText },
+  { id: 'settings', label: 'პარამეტრები', icon: SettingsIcon },
+];
 
-  const fetchUsers = () => {
-    fetch('/api/users')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.users) setAllUsers(data.users);
-      })
-      .catch(() => {});
-  };
+function Shell() {
+  const route = useRoute();
+  const { user, logout } = useSession();
+  const clinic = useClinic();
+  const [menu, setMenu] = useState(false);
+  const section = route[0] || '';
+  useAutoLock(clinic.autoLockMinutes, logout);
 
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.user) setCurrentUser(data.user);
-      })
-      .catch(() => {});
+  useEffect(() => setMenu(false), [route.join('/')]);
 
-    fetch('/api/doctors')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.doctors) setDoctors(data.doctors);
-      })
-      .catch(() => {});
-
-    fetchUsers();
-    fetchAllPatients();
-
-    fetch('/api/calculations')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.calculations) setCalculations(data.calculations);
-      })
-      .catch(() => {});
-
-    fetch('/api/day-close/current')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.shift) setCurrentShift(data.shift);
-      })
-      .catch(() => {});
-
-    fetch('/api/inventory')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.inventory) setInventory(data.inventory);
-      })
-      .catch(() => {});
-
-    fetch('/api/sterilization')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.cycles) setSterilizationCycles(data.cycles);
-      })
-      .catch(() => {});
-
-    fetch('/api/audit-logs')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.auditLogs) setAuditLogs(data.auditLogs);
-      })
-      .catch(() => {});
-  }, []);
-
-  const fetchOdontogram = (patientId: string) => {
-    fetch(`/api/odontogram/${patientId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.history) setOdontogramHistory(data.history);
-        if (data.current) setCurrentOdontogram(data.current);
-      })
-      .catch(() => {});
-  };
-
-  const fetchPeriodontics = (patientId: string) => {
-    fetch(`/api/periodontology/${patientId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.exams) setPeriodontalExams(data.exams);
-      })
-      .catch(() => {});
-  };
-
-  const handleSelectPatient = (patientId: string) => {
-    setSelectedPatientId(patientId);
-    fetchOdontogram(patientId);
-    fetchPeriodontics(patientId);
-  };
-
-  const handleOpenPatientProfileFromAnywhere = (patientId: string) => {
-    handleSelectPatient(patientId);
-    setActiveTab('patient_profile');
-  };
-
-  const handleSelectPatientObjectAndOpenProfile = (pt: Patient) => {
-    handleSelectPatient(pt.id);
-    setActiveTab('patient_profile');
-  };
-
-  const handleRoleSwitch = (newRole: RoleName) => {
-    if (!currentUser) return;
-    fetch('/api/auth/switch-role', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: currentUser.username })
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.user) {
-          setCurrentUser({ ...data.user, roles: [newRole] });
-        }
-      })
-      .catch(() => {});
-  };
-
-  const handleLoginAsUser = (u: User) => {
-    setCurrentUser(u);
-    setIsLoggedOut(false);
-  };
-
-  const handleAddDoctorOrStaff = (newUser: User) => {
-    setAllUsers((prev) => [newUser, ...prev]);
-    if (
-      newUser.roles.some((r) =>
-        r.includes('Dentist') || r.includes('Surgeon') || r.includes('Implantologist') || r.includes('Orthodontist')
-      )
-    ) {
-      setDoctors((prev) => [newUser, ...prev]);
-    }
-  };
-
-  const handleSaveOdontogram = (teeth: Record<number, ToothState>, notes: string) => {
-    if (!selectedPatientId) return;
-    fetch('/api/odontogram', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        patientId: selectedPatientId,
-        teeth,
-        authorName: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'დოქტ. ნინო ყიფიანი',
-        notes
-      })
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.odontogram) {
-          setOdontogramHistory((prev) => [data.odontogram, ...prev]);
-          setCurrentOdontogram(data.odontogram);
-        }
-      })
-      .catch(() => {});
-  };
-
-  const handlePatientRegistered = (newPt: Patient) => {
-    setPatients((prev) => [newPt, ...prev]);
-    setSelectedPatientId(newPt.id);
-    setActiveTab('patient_profile');
-  };
-
-  const handleUpdatePatient = (updatedPt: Patient) => {
-    setPatients((prev) => prev.map((p) => (p.id === updatedPt.id ? updatedPt : p)));
-  };
-
-  const handleCloseShift = (shiftId: string, actualCash: number, notes?: string) => {
-    fetch('/api/day-close/close', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shiftId, actualCountedCashGel: actualCash, notes })
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.shift) setCurrentShift(data.shift);
-      })
-      .catch(() => {});
-  };
-
-  const handleAddSterilizationCycle = (cycleData: any) => {
-    fetch('/api/sterilization', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cycleData)
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.cycle) {
-          setSterilizationCycles((prev) => [data.cycle, ...prev]);
-        }
-      })
-      .catch(() => {});
-  };
-
-  const selectedPatient = patients.find((p) => p.id === selectedPatientId) || patients[0];
-
-  // Search filter for patients
-  const filteredPatients = patients.filter((p) => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      p.firstName.toLowerCase().includes(q) ||
-      p.lastName.toLowerCase().includes(q) ||
-      p.personalNumber.includes(q) ||
-      p.medicalCardNumber.toLowerCase().includes(q) ||
-      p.phone.includes(q)
-    );
-  });
-
-  if (!currentUser || patients.length === 0) {
-    return (
-      <div className="h-screen bg-slate-900 text-teal-400 flex items-center justify-center font-bold text-sm">
-        იტვირთება სტომატოლოგიური კლინიკის HIS / ERP / CRM სისტემა...
-      </div>
-    );
+  let page: React.ReactNode;
+  switch (section) {
+    case 'patients':
+      page = <PatientsPage />;
+      break;
+    case 'patient':
+      page = <PatientPage key={route[1]} patientId={route[1]} tab={route[2]} sub={route[3]} />;
+      break;
+    case 'appointments':
+      page = <AppointmentsPage />;
+      break;
+    case 'journal':
+      page = <JournalPage />;
+      break;
+    case 'templates':
+      page = <TemplatesPage />;
+      break;
+    case 'settings':
+      page = <SettingsPage />;
+      break;
+    default:
+      page = <Dashboard />;
   }
 
-  // Logged Out Screen
-  if (isLoggedOut) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-6 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 mx-auto flex items-center justify-center text-3xl font-extrabold text-white shadow-lg">
-            D
-          </div>
-
-          <div>
-            <h1 className="text-xl font-bold text-white">DENTAL HIS / ERP</h1>
-            <p className="text-xs text-teal-400 font-medium mt-1">
-              სისტემიდან გამოსული ხართ. აირჩიეთ მომხმარებელი / ექიმი შესასვლელად:
-            </p>
-          </div>
-
-          <div className="space-y-2 max-h-60 overflow-y-auto text-left">
-            {allUsers.map((u) => (
-              <button
-                key={u.id}
-                onClick={() => handleLoginAsUser(u)}
-                className="w-full p-3 bg-slate-800 hover:bg-teal-600/20 hover:border-teal-500 border border-slate-700 rounded-xl transition-all flex items-center justify-between group"
-              >
-                <div className="flex items-center space-x-3">
-                  <div className="w-9 h-9 rounded-lg bg-slate-900 text-teal-400 font-bold flex items-center justify-center text-xs border border-slate-700">
-                    {u.firstName[0]}
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-white group-hover:text-teal-300">
-                      {u.firstName} {u.lastName}
-                    </h3>
-                    <p className="text-[10px] text-slate-400">{u.position}</p>
-                  </div>
-                </div>
-                <LogIn className="w-4 h-4 text-slate-400 group-hover:text-teal-400" />
-              </button>
-            ))}
-          </div>
-
-          <div className="pt-2 border-t border-slate-800">
-            <button
-              onClick={() => setIsLoggedOut(false)}
-              className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center space-x-2"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>სისტემაში ავტორიზაცია</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const active = section === 'patient' ? 'patients' : section;
 
   return (
-    <div className="min-h-screen bg-slate-100 flex text-slate-800 font-sans antialiased">
-      {/* Sidebar Navigation */}
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        currentRole={currentUser.roles[0]}
-        onOpenManifest={() => setIsManifestOpen(true)}
-        onOpenNewPatientRegistration={() => setIsNewPatientModalOpen(true)}
-      />
-
-      {/* Main Right Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <Header
-          currentUser={currentUser}
-          onRoleSwitch={handleRoleSwitch}
-          selectedBranch={selectedBranch}
-          onBranchChange={setSelectedBranch}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          onLogout={() => setIsLoggedOut(true)}
-        />
-
-        {/* Quick Patient Switcher Bar */}
-        <div className="bg-slate-900 text-white px-6 py-2.5 border-b border-slate-800 flex items-center justify-between gap-4 overflow-x-auto">
-          <div className="flex items-center space-x-2 shrink-0">
-            <Users className="w-4 h-4 text-teal-400" />
-            <span className="text-xs font-bold uppercase text-slate-300 tracking-wider">
-              სწრაფი გადართვა:
-            </span>
+    <div className="h-full flex">
+      <aside
+        className={cls(
+          'no-print fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-200 flex flex-col transition-transform lg:static lg:translate-x-0',
+          menu ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
+        <div className="px-5 py-4 border-b border-slate-800 flex items-center gap-3">
+          {clinic.logo ? (
+            <img src={clinic.logo} alt="" className="w-9 h-9 rounded-lg object-contain bg-white" />
+          ) : (
+            <div className="w-9 h-9 rounded-lg bg-teal-500 flex items-center justify-center">
+              <Stethoscope className="w-5 h-5 text-white" />
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white truncate">{clinic.name}</p>
+            <p className="text-[11px] text-slate-400">ელექტრონული სამედიცინო ბარათი</p>
           </div>
-
-          <div className="flex items-center space-x-2 overflow-x-auto flex-1 py-0.5">
-            {filteredPatients.map((p) => {
-              const isSelected = p.id === selectedPatient?.id;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => handleSelectPatient(p.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center space-x-2 shrink-0 ${
-                    isSelected
-                      ? 'bg-teal-500 text-slate-950 font-black shadow-md ring-2 ring-teal-400/50'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
-                  }`}
-                >
-                  <span>{p.firstName} {p.lastName}</span>
-                  <span className="text-[10px] opacity-75 font-mono">({p.personalNumber})</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <button
-            onClick={() => setIsNewPatientModalOpen(true)}
-            className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-xs font-bold shrink-0 flex items-center space-x-1 shadow-sm"
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>+ რეგისტრაცია</span>
+          <button className="lg:hidden ml-auto" onClick={() => setMenu(false)}>
+            <X className="w-5 h-5" />
           </button>
         </div>
-
-        {/* Main Content Area */}
-        <main className="p-6 flex-1 overflow-y-auto">
-          {activeTab === 'patients_list' && (
-            <PatientsList
-              patients={patients}
-              onSelectPatient={handleSelectPatientObjectAndOpenProfile}
-              onOpenNewPatientRegistration={() => setIsNewPatientModalOpen(true)}
-            />
-          )}
-
-          {activeTab === 'patient_profile' && selectedPatient && (
-            <PatientProfile
-              patient={selectedPatient}
-              doctors={doctors}
-              odontogramHistory={odontogramHistory}
-              currentOdontogram={currentOdontogram}
-              periodontalExams={periodontalExams}
-              calculations={calculations}
-              onSaveOdontogram={handleSaveOdontogram}
-              onUpdatePatient={handleUpdatePatient}
-              onBackToPatientsList={() => setActiveTab('patients_list')}
-            />
-          )}
-
-          {activeTab === 'calendar' && (
-            <DoctorCalendar
-              patients={patients}
-              doctors={doctors}
-              onOpenPatientProfile={handleOpenPatientProfileFromAnywhere}
-            />
-          )}
-
-          {activeTab === 'queue' && (
-            <QueueManager
-              patients={patients}
-              onOpenPatientProfile={handleOpenPatientProfileFromAnywhere}
-            />
-          )}
-
-          {activeTab === 'forms' && selectedPatient && (
-            <FormsManager patient={selectedPatient} />
-          )}
-
-          {activeTab === 'calculation' && selectedPatient && (
-            <CalculationEngine
-              patient={selectedPatient}
-              calculations={calculations}
-              onCreateCalculation={() => {}}
-            />
-          )}
-
-          {activeTab === 'dayclose' && (
-            <CashDeskDayClose currentShift={currentShift} onCloseShift={handleCloseShift} />
-          )}
-
-          {activeTab === 'inventory' && <InventoryFEFO inventory={inventory} />}
-
-          {activeTab === 'sterilization' && (
-            <SterilizationInfection
-              cycles={sterilizationCycles}
-              onAddCycle={handleAddSterilizationCycle}
-            />
-          )}
-
-          {activeTab === 'radiology' && selectedPatient && (
-            <RadiologyViewer patient={selectedPatient} />
-          )}
-
-          {activeTab === 'staff' && (
-            <StaffManager users={allUsers} onAddUser={handleAddDoctorOrStaff} />
-          )}
-
-          {activeTab === 'audit' && <AuditLogView auditLogs={auditLogs} />}
+        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+          {NAV.map((n) => (
+            <button
+              key={n.id}
+              onClick={() => navigate(n.id)}
+              className={cls(
+                'w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition',
+                active === n.id ? 'bg-teal-600 text-white' : 'text-slate-300 hover:bg-slate-800',
+              )}
+            >
+              <n.icon className="w-4 h-4" />
+              {n.label}
+            </button>
+          ))}
+        </nav>
+        <div className="p-3 border-t border-slate-800">
+          <div className="px-2 mb-2">
+            <p className="text-sm text-white font-medium truncate">{userName(user)}</p>
+            <p className="text-[11px] text-slate-400">{ROLE_LABELS[user!.role]}</p>
+          </div>
+          <button onClick={logout} className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-slate-800">
+            <Lock className="w-4 h-4" /> დაბლოკვა / მომხმარებლის შეცვლა
+          </button>
+        </div>
+      </aside>
+      {menu && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setMenu(false)} />}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <header className="no-print lg:hidden flex items-center gap-3 bg-white border-b border-slate-200 px-4 py-3">
+          <button onClick={() => setMenu(true)}>
+            <Menu className="w-5 h-5" />
+          </button>
+          <span className="font-semibold text-sm truncate">{clinic.name}</span>
+          <button onClick={logout} className="ml-auto text-slate-500">
+            <LogOut className="w-5 h-5" />
+          </button>
+        </header>
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-[1500px] mx-auto p-4 sm:p-6">{page}</div>
         </main>
       </div>
-
-      {/* New Patient Registration Modal */}
-      <PatientRegistrationModal
-        isOpen={isNewPatientModalOpen}
-        onClose={() => setIsNewPatientModalOpen(false)}
-        onPatientRegistered={handlePatientRegistered}
-      />
-
-      {/* Master Manifest Modal */}
-      <MasterManifestModal
-        isOpen={isManifestOpen}
-        onClose={() => setIsManifestOpen(false)}
-      />
     </div>
   );
+}
+
+function useAutoLock(minutes: number, onLock: () => void) {
+  const last = useRef(Date.now());
+  useEffect(() => {
+    if (!minutes || minutes <= 0) return;
+    const bump = () => (last.current = Date.now());
+    const evs = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
+    evs.forEach((e) => window.addEventListener(e, bump, { passive: true }));
+    const t = setInterval(() => {
+      if (Date.now() - last.current > minutes * 60_000) onLock();
+    }, 15_000);
+    return () => {
+      evs.forEach((e) => window.removeEventListener(e, bump));
+      clearInterval(t);
+    };
+  }, [minutes, onLock]);
 }
