@@ -32,7 +32,7 @@ export function Form220Sheet({ patient: p, clinic }: { patient: Patient; clinic:
       </div>
       <h1 style={{ marginTop: 28 }}>სტომატოლოგიური პაციენტის სამედიცინო ბარათი №{p.cardNumber}</h1>
       <p className="small" style={{ textAlign: 'center' }}>
-        {p.cardSource === 'personalId' ? 'ნომერი მინიჭებულია პირადი ნომრის მიხედვით' : 'ნომერი მინიჭებულია რეგისტრაციის ჟურნალის (ფორმა №IV-220-3/ა) რიგითი ნომრით'} · ბარათი გახსნილია {fmtDate(p.createdAt.slice(0, 10))}
+        პირადი ნომერი: {p.idNumber || '—'} · ბარათი გახსნილია {fmtDate(p.createdAt.slice(0, 10))}
       </p>
       <div style={{ marginTop: 18 }}>
         {line('გვარი, სახელი', `${p.lastName} ${p.firstName}${p.fatherName ? ` (მამის სახ. ${p.fatherName})` : ''}`)}
@@ -64,7 +64,7 @@ export function MedicalCardPrint({ open, onClose, patient }: { open: boolean; on
   const cases = useMemo(() => groupCases(visits).reverse(), [visits]);
   if (!open) return null;
   return (
-    <PrintPreview open={open} onClose={onClose} title={`ფორმა №IV-220/ა — ბარათი №${patient.cardNumber}`}>
+    <PrintPreview open={open} onClose={onClose} title={`ფორმა №IV-220/ა — ისტორია №${patient.cardNumber}`}>
       <div>
         <Form220Sheet patient={patient} clinic={clinic} />
         {cases.map((c) => (

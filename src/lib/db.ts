@@ -7,6 +7,7 @@ import type {
   IcdEntry,
   MedDocument,
   OdontogramSnapshot,
+  Charge,
   Patient,
   Payment,
   RadiologyStudy,
@@ -33,6 +34,7 @@ class ClinicDB extends Dexie {
   odontograms!: Table<OdontogramSnapshot, string>;
   appointments!: Table<Appointment, string>;
   payments!: Table<Payment, string>;
+  charges!: Table<Charge, string>;
   templates!: Table<Template, string>;
   services!: Table<ServiceItem, string>;
   customIcd!: Table<IcdEntry, string>;
@@ -98,6 +100,23 @@ class ClinicDB extends Dexie {
         }
         for (const [pid, n] of maxVisit) await kv.put({ key: `counter:case:${pid}`, value: n });
         await kv.put({ key: 'counter:journal', value: j });
+      });
+    // v3: ისტორიის ნომერი წლის მიხედვით (1/26) და წინასწარ დარიცხული მომსახურება
+    this.version(3)
+      .stores({ charges: 'id, patientId, date, status' })
+      .upgrade(async (tx) => {
+        const kv = tx.table('kv');
+        const pts = (await tx.table('patients').toArray()).sort((a: any, b: any) => String(a.createdAt).localeCompare(String(b.createdAt)));
+        const seq = new Map<string, number>();
+        // დროებითი ნომრები, რომ unique ინდექსი არ დაირღვეს
+        for (const p of pts) await tx.table('patients').update(p.id, { cardNumber: `tmp-${p.id}` });
+        for (const p of pts) {
+          const year = String(p.createdAt || new Date().toISOString()).slice(0, 4);
+          const n = (seq.get(year) || 0) + 1;
+          seq.set(year, n);
+          await tx.table('patients').update(p.id, { cardNumber: `${n}/${year.slice(2)}`, cardSource: 'history', reservedJournalNo: undefined });
+        }
+        for (const [year, n] of seq) await kv.put({ key: `counter:history:${year}`, value: n });
       });
   }
 }
@@ -187,7 +206,7 @@ export async function audit(action: string, entity: string, entityId: string, de
 export async function deletePatientCascade(patientId: string) {
   await db.transaction(
     'rw',
-    [db.patients, db.visits, db.documents, db.radiology, db.files, db.odontograms, db.appointments, db.payments],
+    [db.patients, db.visits, db.documents, db.radiology, db.files, db.odontograms, db.appointments, db.payments, db.charges],
     async () => {
       await db.visits.where('patientId').equals(patientId).delete();
       await db.documents.where('patientId').equals(patientId).delete();
@@ -196,6 +215,7 @@ export async function deletePatientCascade(patientId: string) {
       await db.odontograms.where('patientId').equals(patientId).delete();
       await db.appointments.where('patientId').equals(patientId).delete();
       await db.payments.where('patientId').equals(patientId).delete();
+      await db.charges.where('patientId').equals(patientId).delete();
       await db.patients.delete(patientId);
     },
   );
@@ -224,6 +244,7 @@ const BACKUP_TABLES = [
   'odontograms',
   'appointments',
   'payments',
+  'charges',
   'templates',
   'services',
   'customIcd',

@@ -81,7 +81,7 @@ export function PatientPage({ patientId, tab, sub }: { patientId: string; tab?: 
     });
     if (!ok) return;
     await deletePatientCascade(patient.id);
-    await audit('DELETE', 'Patient', patient.id, `წაიშალა პაციენტი ${patientName(patient)}, ბარათი №${patient.cardNumber}`);
+    await audit('DELETE', 'Patient', patient.id, `წაიშალა პაციენტი ${patientName(patient)}, ისტორია №${patient.cardNumber}`);
     ui.toast('პაციენტი წაიშალა');
     navigate('patients');
   };
@@ -107,7 +107,7 @@ export function PatientPage({ patientId, tab, sub }: { patientId: string; tab?: 
             </div>
             <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-600">
               <span className="flex items-center gap-1">
-                <ClipboardList className="w-4 h-4 text-slate-400" /> ბარათი (IV-220/ა) №<b className="font-mono">{patient.cardNumber}</b>
+                <ClipboardList className="w-4 h-4 text-slate-400" /> ისტორია №<b className="font-mono">{patient.cardNumber}</b>
               </span>
               <span className="flex items-center gap-1">
                 <IdCard className="w-4 h-4 text-slate-400" />

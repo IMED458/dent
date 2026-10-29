@@ -22,7 +22,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { db, useLive, uid, nowIso, audit } from '../../lib/db';
-import { RADIOLOGY_LABELS, type Patient, type RadiologyKind, type RadiologyStudy, type StoredFile, type Visit } from '../../lib/types';
+import { RADIOLOGY_LABELS, type Charge, type Patient, type RadiologyKind, type RadiologyStudy, type ServiceItem, type StoredFile, type Visit } from '../../lib/types';
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, useUi } from '../../components/ui';
 import { TemplateText } from '../../components/clinical';
 import { useSession } from '../../lib/session';
@@ -178,6 +178,8 @@ function StudyEditor({ patient, study, files, onClose }: { patient: Patient; stu
     doctorId: study?.doctorId || user!.id,
     visitId: study?.visitId || '',
   });
+  const services = useLive(() => db.services.toArray(), [], [] as ServiceItem[]) as ServiceItem[];
+  const [chargeId, setChargeId] = useState<string>('auto');
   const [pending, setPending] = useState<Pending[]>([]);
   const [removed, setRemoved] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -251,6 +253,28 @@ function StudyEditor({ patient, study, files, onClose }: { patient: Patient; stu
         if (removed.length) await db.files.bulkDelete(removed);
         await db.radiology.put(record);
       });
+      const svc = chargeId === 'auto' ? suggestService(services, f.kind) : services.find((x) => x.id === chargeId);
+      if (!study && svc) {
+        const ch: Charge = {
+          id: uid(),
+          patientId: patient.id,
+          date: f.date,
+          serviceId: svc.id,
+          code: svc.code,
+          name: svc.name,
+          group: svc.group,
+          teeth: f.teeth,
+          qty: 1,
+          price: svc.price,
+          discount: 0,
+          status: 'done',
+          visitId: f.visitId || undefined,
+          note: RADIOLOGY_LABELS[f.kind],
+          createdAt: nowIso(),
+          createdBy: user!.id,
+        };
+        await db.charges.add(ch);
+      }
       await audit(study ? 'UPDATE' : 'CREATE', 'Radiology', sid, `${RADIOLOGY_LABELS[f.kind]} ${fmtDate(f.date)} — ${record.fileIds.length} ფაილი`, patient.id);
       ui.toast('კვლევა შენახულია');
       onClose();
@@ -375,6 +399,19 @@ function StudyEditor({ patient, study, files, onClose }: { patient: Patient; stu
             </Select>
           </Field>
         </div>
+        {!study && (
+          <Field label="მომსახურების დარიცხვა (ფინანსები)" hint="შეგიძლიათ შეცვალოთ ან გამორთოთ; ფასი აიღება პრეისკურანტიდან">
+            <Select value={chargeId} onChange={(e) => setChargeId(e.target.value)}>
+              <option value="auto">ავტომატურად: {suggestService(services, f.kind) ? `${suggestService(services, f.kind)!.name} — ${suggestService(services, f.kind)!.price} ₾` : 'შესაბამისი მომსახურება ვერ მოიძებნა'}</option>
+              <option value="">არ დაირიცხოს</option>
+              {services.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name} — {x.price} ₾
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <TemplateText label="აღწერა" category="xrayDescription" value={f.description} onChange={(x) => setF({ ...f, description: x })} rows={3} />
         <TemplateText label="დასკვნა" category="xrayConclusion" value={f.conclusion} onChange={(x) => setF({ ...f, conclusion: x })} rows={2} />
       </div>
@@ -529,4 +566,19 @@ function IconBtn({ children, onClick, title, active }: { children: React.ReactNo
       {children}
     </button>
   );
+}
+
+/** რადიოლოგიური კვლევის სახის მიხედვით შესაბამისი მომსახურება პრეისკურანტიდან */
+function suggestService(services: ServiceItem[], kind: RadiologyKind): ServiceItem | undefined {
+  if (kind === 'photo' || kind === 'scan' || kind === 'other') return undefined;
+  const words: Record<string, string[]> = {
+    periapical: ['პერიაპიკ', 'კბილის რენტგ', 'რვგ', 'ვიზიო'],
+    bitewing: ['bitewing', 'ინტერპროქს', 'პერიაპიკ'],
+    occlusal: ['ოკლუზ', 'პერიაპიკ'],
+    opg: ['opg', 'ორთოპანტ', 'პანორამ'],
+    cbct: ['cbct', 'კტ', 'ტომოგრ'],
+    trg: ['trg', 'ტელერენტგ'],
+  };
+  const w = words[kind] || [];
+  return services.find((s) => w.some((x) => s.name.toLowerCase().includes(x)));
 }

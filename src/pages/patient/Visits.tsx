@@ -777,7 +777,7 @@ export function CaseSheet({ caseGroup, patient, staff }: { caseGroup: CaseGroup;
         <div style={{ textAlign: 'right' }}>
           <b>ფორმა №IV-220-1/ა</b>
           <div>
-            ბარათი №{patient.cardNumber} · შემთხვევა №{v.caseNo}
+            ისტორია №{patient.cardNumber} · შემთხვევა №{v.caseNo}
           </div>
         </div>
       </div>

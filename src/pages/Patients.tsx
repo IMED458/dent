@@ -23,6 +23,12 @@ export function usePatientsWithLastVisit() {
 
 export type PatientRow = ReturnType<typeof usePatientsWithLastVisit>[number];
 
+/** „12/26“ → დალაგების გასაღები (წელი, შემდეგ რიგითი ნომერი) */
+export const historyKey = (n: string) => {
+  const m = /^(\d+)\/(\d{2})$/.exec(n || '');
+  return m ? Number(m[2]) * 1e6 + Number(m[1]) : 0;
+};
+
 export function matchPatient(p: Patient, q: string) {
   const s = normalize(q);
   if (!s) return true;
@@ -39,7 +45,7 @@ export function PatientsTable({ rows, limit }: { rows: PatientRow[]; limit?: num
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-slate-500 border-b border-slate-100">
-            <th className="px-4 py-2 font-medium whitespace-nowrap">ბარათი №</th>
+            <th className="px-4 py-2 font-medium whitespace-nowrap">ისტორია №</th>
             <th className="px-2 py-2 font-medium">პაციენტი</th>
             <th className="px-2 py-2 font-medium">პირადი ნომერი</th>
             <th className="px-2 py-2 font-medium">დაბ. თარიღი</th>
@@ -92,7 +98,7 @@ export function PatientsPage() {
   const filtered = useMemo(() => {
     const r = rows.filter((p) => (showArchived || !p.archived) && matchPatient(p, q));
     if (sort === 'name') r.sort((a, b) => patientName(a).localeCompare(patientName(b), 'ka'));
-    if (sort === 'card') r.sort((a, b) => b.cardNumber.localeCompare(a.cardNumber));
+    if (sort === 'card') r.sort((a, b) => historyKey(b.cardNumber) - historyKey(a.cardNumber));
     if (sort === 'recent') r.sort((a, b) => (b.lastVisit || b.createdAt).localeCompare(a.lastVisit || a.createdAt));
     return r;
   }, [rows, q, sort, showArchived]);
@@ -111,12 +117,12 @@ export function PatientsPage() {
         <div className="flex flex-wrap gap-3 mb-4">
           <div className="relative flex-1 min-w-[240px]">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input autoFocus className="pl-9" placeholder="ძებნა: გვარი, სახელი, პირადი ნომერი, ბარათის №, ტელეფონი" value={q} onChange={(e) => setQ(e.target.value)} />
+            <Input autoFocus className="pl-9" placeholder="ძებნა: გვარი, სახელი, პირადი ნომერი, ისტორიის №, ტელეფონი" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <Select value={sort} onChange={(e) => setSort(e.target.value as any)} className="w-auto">
             <option value="recent">ბოლო აქტივობით</option>
             <option value="name">ანბანით</option>
-            <option value="card">ბარათის ნომრით</option>
+            <option value="card">ისტორიის ნომრით</option>
           </Select>
           <label className="flex items-center gap-2 text-sm text-slate-600">
             <input type="checkbox" className="accent-teal-600" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> არქივიც

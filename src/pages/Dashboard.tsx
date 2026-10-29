@@ -76,7 +76,7 @@ export function Dashboard() {
         >
           <div className="relative mb-3">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input className="pl-9" placeholder="სწრაფი ძებნა: გვარი, პირადი ნომერი, ბარათის №, ტელეფონი" value={q} onChange={(e) => setQ(e.target.value)} />
+            <Input className="pl-9" placeholder="სწრაფი ძებნა: გვარი, პირადი ნომერი, ისტორიის №, ტელეფონი" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           {filtered.length ? (
             <PatientsTable rows={filtered} limit={q ? 50 : 15} />

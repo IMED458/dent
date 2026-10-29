@@ -3,8 +3,8 @@ import type { ClinicSettings } from '../lib/types';
 
 export function SheetHeader({ clinic, formCode, right }: { clinic: ClinicSettings; formCode?: string; right?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, borderBottom: '1.5px solid #000', paddingBottom: 6, marginBottom: 8 }}>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, borderBottom: '1.5px solid #000', paddingBottom: 6, marginBottom: 8, breakInside: 'avoid' }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: '1 1 auto', minWidth: 0 }}>
         {clinic.logo && <img src={clinic.logo} alt="" style={{ height: 44, width: 'auto' }} />}
         <div className="small" style={{ lineHeight: 1.35 }}>
           <div style={{ fontWeight: 700, fontSize: '11pt' }}>{clinic.legalName || clinic.name}</div>
@@ -18,7 +18,7 @@ export function SheetHeader({ clinic, formCode, right }: { clinic: ClinicSetting
           {clinic.license && <div>სამედიცინო საქმიანობის ლიცენზია/ნებართვა: {clinic.license}</div>}
         </div>
       </div>
-      <div className="small" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+      <div className="small" style={{ textAlign: 'right', flex: '0 0 auto', maxWidth: '40%' }}>
         {formCode && <div style={{ fontWeight: 700 }}>{formCode}</div>}
         {right}
       </div>

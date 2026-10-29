@@ -277,7 +277,7 @@ export function PatientPicker({ value, onChange }: { value?: string; onChange: (
       {selected ? (
         <div className="flex items-center justify-between rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-sm">
           <span>
-            <b>{patientName(selected)}</b> · {selected.idNumber || '—'} · ბარათი №{selected.cardNumber}
+            <b>{patientName(selected)}</b> · {selected.idNumber || '—'} · ისტორია №{selected.cardNumber}
           </span>
           <button type="button" className="text-xs text-teal-700 underline" onClick={() => onChange(null)}>
             შეცვლა

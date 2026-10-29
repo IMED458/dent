@@ -95,7 +95,7 @@ const PatientTable = ({ p, extra }: { p: Patient; extra?: React.ReactNode }) => 
           <b>დაბადების თარიღი:</b> {fmtDate(p.birthDate)} ({ageOf(p.birthDate)} წ.)
         </td>
         <td>
-          <b>სამედიცინო ბარათი №:</b> {p.cardNumber}
+          <b>ისტორიის №:</b> {p.cardNumber}
         </td>
       </tr>
       <tr>
@@ -292,7 +292,7 @@ const consent: DocType = {
           <div style={{ textAlign: 'right' }}>
             <b>ფორმა №IV-220-2/ა</b>
             <div>
-              № {doc.number} · ბარათი №{p.cardNumber}
+              № {doc.number} · ისტორია №{p.cardNumber}
             </div>
           </div>
         </div>

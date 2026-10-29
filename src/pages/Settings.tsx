@@ -6,18 +6,23 @@ import { Badge, Button, Card, Field, Input, Modal, Select, Tabs, Textarea, useUi
 import { useSession } from '../lib/session';
 import { useIcdList } from '../components/clinical';
 import { normalizeIcd } from '../data/icd10';
-import { downloadBlob, fmtDateTime, hashPin, money, normalize, readAsDataUrl, todayStr, userName } from '../lib/utils';
+import { cls, downloadBlob, fmtDateTime, hashPin, money, normalize, readAsDataUrl, round2, todayStr, userName } from '../lib/utils';
+import { useRoute } from '../lib/router';
 
 type Tab = 'clinic' | 'staff' | 'services' | 'icd' | 'data' | 'audit';
 
 export function SettingsPage() {
   const { can } = useSession();
-  const [tab, setTab] = useState<Tab>(can('admin') ? 'clinic' : 'data');
+  const route = useRoute();
+  const [tab, setTab] = useState<Tab>(can('admin') ? ((['clinic', 'staff', 'services', 'icd', 'data', 'audit'].includes(route[1]) ? route[1] : 'clinic') as Tab) : 'data');
+  useEffect(() => {
+    if (can('admin') && route[1] && ['clinic', 'staff', 'services', 'icd', 'data', 'audit'].includes(route[1])) setTab(route[1] as Tab);
+  }, [route[1]]);
   const tabs: { id: Tab; label: string }[] = can('admin')
     ? [
         { id: 'clinic', label: 'კლინიკა' },
         { id: 'staff', label: 'თანამშრომლები' },
-        { id: 'services', label: 'მომსახურების ფასები' },
+        { id: 'services', label: 'სერვისები და ფასები' },
         { id: 'icd', label: 'ICD-10' },
         { id: 'data', label: 'მონაცემები / სარეზერვო ასლი' },
         { id: 'audit', label: 'აუდიტის ჟურნალი' },
@@ -222,71 +227,122 @@ function UserModal({ u, onClose }: { u: Partial<User>; onClose: () => void }) {
 }
 
 function ServicesTab() {
-  const list = (useLive(() => db.services.toArray(), [], [] as ServiceItem[]) as ServiceItem[]).sort((a, b) => a.group.localeCompare(b.group, 'ka') || a.code.localeCompare(b.code));
+  const list = (useLive(() => db.services.toArray(), [], [] as ServiceItem[]) as ServiceItem[]).sort((a, b) => a.group.localeCompare(b.group, 'ka') || a.code.localeCompare(b.code, 'ka', { numeric: true }));
   const ui = useUi();
-  const [edit, setEdit] = useState<Partial<ServiceItem> | null>(null);
-  const save = async () => {
-    if (!edit?.name?.trim()) return ui.toast('მიუთითეთ დასახელება', 'err');
-    await db.services.put({ id: edit.id || uid(), code: edit.code || '', name: edit.name.trim(), group: edit.group || 'სხვა', price: Number(edit.price) || 0 });
-    setEdit(null);
+  const [q, setQ] = useState('');
+  const [group, setGroup] = useState('');
+  const groups = [...new Set(list.map((s) => s.group))];
+  const shown = list.filter((s) => (!group || s.group === group) && (!q || normalize(`${s.code} ${s.name} ${s.group}`).includes(normalize(q))));
+
+  const patch = async (s: ServiceItem, p: Partial<ServiceItem>) => {
+    await db.services.update(s.id, p);
   };
+  const addRow = async () => {
+    const id = uid();
+    await db.services.add({ id, code: '', name: 'ახალი მომსახურება', group: group || groups[0] || 'სხვა', price: 0 });
+    ui.toast('დაემატა ახალი სტრიქონი — შეცვალეთ დასახელება და ფასი');
+  };
+  const remove = async (s: ServiceItem) => {
+    if (!(await ui.confirm({ title: 'მომსახურების წაშლა', text: `${s.name} (${money(s.price)}). უკვე დარიცხულ მომსახურებას ეს არ შეცვლის.`, danger: true, okLabel: 'წაშლა' }))) return;
+    await db.services.delete(s.id);
+    await audit('DELETE', 'Service', s.id, `პრეისკურანტიდან წაიშალა: ${s.name}`);
+  };
+  const bulk = async () => {
+    const pct = await ui.prompt({ title: 'ფასების ცვლილება %-ით', text: `${group ? `ჯგუფი: ${group}` : 'ყველა მომსახურება'} (${shown.length}). მიუთითეთ % (მაგ. 10 — გაძვირება, -5 — გაიაფება):`, okLabel: 'გამოყენება' });
+    const n = Number(String(pct || '').replace(',', '.'));
+    if (!pct || !isFinite(n)) return;
+    await db.transaction('rw', db.services, async () => {
+      for (const s of shown) await db.services.update(s.id, { price: round2(s.price * (1 + n / 100)) });
+    });
+    await audit('UPDATE', 'Service', 'bulk', `ფასები შეიცვალა ${n}%-ით (${shown.length} მომსახურება)`);
+    ui.toast('ფასები განახლდა');
+  };
+
   return (
-    <Card title="მომსახურების პრეისკურანტი" actions={<Button size="sm" variant="primary" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setEdit({ group: list[0]?.group })}>დამატება</Button>} bodyClass="p-0">
-      <table className="w-full text-sm">
-        <tbody>
-          {list.map((s) => (
-            <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onClick={() => setEdit(s)}>
-              <td className="px-4 py-2 font-mono text-xs w-20">{s.code}</td>
-              <td className="px-2 py-2 text-xs text-slate-500">{s.group}</td>
-              <td className="px-2 py-2">{s.name}</td>
-              <td className="px-4 py-2 text-right font-medium">{money(s.price)}</td>
-            </tr>
+    <Card
+      title={`მომსახურების პრეისკურანტი (${list.length})`}
+      actions={
+        <>
+          <Button size="sm" onClick={bulk} disabled={!shown.length}>
+            ფასების ცვლილება %
+          </Button>
+          <Button size="sm" variant="primary" icon={<Plus className="w-3.5 h-3.5" />} onClick={addRow}>
+            მომსახურების დამატება
+          </Button>
+        </>
+      }
+      bodyClass="p-0"
+    >
+      <div className="flex flex-wrap gap-2 p-4 pb-2">
+        <Input placeholder="ძებნა: დასახელება, კოდი…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
+        <Select value={group} onChange={(e) => setGroup(e.target.value)} className="w-auto">
+          <option value="">ყველა ჯგუფი</option>
+          {groups.map((g) => (
+            <option key={g}>{g}</option>
           ))}
-        </tbody>
-      </table>
-      {edit && (
-        <Modal
-          open
-          size="sm"
-          onClose={() => setEdit(null)}
-          title={edit.id ? 'მომსახურების რედაქტირება' : 'ახალი მომსახურება'}
-          footer={
-            <>
-              {edit.id && (
-                <Button variant="danger" icon={<Trash2 className="w-4 h-4" />} onClick={async () => (await db.services.delete(edit.id!), setEdit(null))}>
-                  წაშლა
-                </Button>
-              )}
-              <Button variant="primary" onClick={save}>
-                შენახვა
-              </Button>
-            </>
-          }
-        >
-          <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="კოდი">
-                <Input value={edit.code || ''} onChange={(e) => setEdit({ ...edit, code: e.target.value })} />
-              </Field>
-              <Field label="ჯგუფი" className="col-span-2">
-                <Input list="svc-groups" value={edit.group || ''} onChange={(e) => setEdit({ ...edit, group: e.target.value })} />
-                <datalist id="svc-groups">
-                  {[...new Set(list.map((s) => s.group))].map((g) => (
-                    <option key={g} value={g} />
-                  ))}
-                </datalist>
-              </Field>
-            </div>
-            <Field label="დასახელება" required>
-              <Input value={edit.name || ''} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
-            </Field>
-            <Field label="ფასი (₾)">
-              <Input type="number" min={0} value={edit.price ?? ''} onChange={(e) => setEdit({ ...edit, price: Number(e.target.value) })} />
-            </Field>
-          </div>
-        </Modal>
-      )}
+        </Select>
+      </div>
+      <p className="px-4 pb-2 text-xs text-slate-500">ცვლილება ინახება ავტომატურად. ახალი ფასი ვრცელდება მხოლოდ შემდგომ დარიცხვებზე — უკვე დარიცხული მომსახურების თანხა არ იცვლება.</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[640px]">
+          <thead>
+            <tr className="text-left text-xs text-slate-500 border-y border-slate-100 bg-slate-50">
+              <th className="px-4 py-2 w-28 font-medium">კოდი</th>
+              <th className="px-2 py-2 w-56 font-medium">ჯგუფი</th>
+              <th className="px-2 py-2 font-medium">დასახელება</th>
+              <th className="px-2 py-2 w-32 font-medium text-right">ფასი ₾</th>
+              <th className="px-4 py-2 w-10"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((s) => (
+              <tr key={s.id} className="border-b border-slate-50">
+                <td className="px-4 py-1.5">
+                  <EditCell value={s.code} onSave={(v) => patch(s, { code: v })} />
+                </td>
+                <td className="px-2 py-1.5">
+                  <EditCell value={s.group} list="svc-groups" onSave={(v) => patch(s, { group: v || 'სხვა' })} />
+                </td>
+                <td className="px-2 py-1.5">
+                  <EditCell value={s.name} onSave={(v) => v && patch(s, { name: v })} />
+                </td>
+                <td className="px-2 py-1.5">
+                  <EditCell value={String(s.price)} numeric onSave={(v) => patch(s, { price: round2(Number(v.replace(',', '.')) || 0) })} />
+                </td>
+                <td className="px-4 py-1.5">
+                  <button onClick={() => remove(s)} className="p-1 text-slate-400 hover:text-red-600" title="წაშლა">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <datalist id="svc-groups">
+          {groups.map((g) => (
+            <option key={g} value={g} />
+          ))}
+        </datalist>
+      </div>
     </Card>
+  );
+}
+
+/** ცხრილის უჯრა, რომელიც ინახება ფოკუსის დაკარგვისას ან Enter-ზე */
+function EditCell({ value, onSave, numeric, list }: { value: string; onSave: (v: string) => void; numeric?: boolean; list?: string }) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
+  const commit = () => v.trim() !== value && onSave(v.trim());
+  return (
+    <Input
+      value={v}
+      list={list}
+      inputMode={numeric ? 'decimal' : undefined}
+      className={cls('py-1.5', numeric && 'text-right font-medium')}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+    />
   );
 }
 

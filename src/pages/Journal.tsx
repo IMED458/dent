@@ -56,7 +56,7 @@ function RegistrationJournal() {
       dx: v.diagnoses.map((x) => `${x.code} ${x.text}${x.teeth ? ` (კბ. ${x.teeth})` : ''}`).join('; '),
       act: [v.examPlan?.length ? `გამოკვლევა: ${v.examPlan.join(', ')}` : '', (v.treatment || '').trim().replace(/[.。]+$/, ''), v.procedures.map((x) => x.service + (x.teeth ? ` (კბ. ${x.teeth})` : '')).join(', ')].filter(Boolean).join('. '),
       doctor: d?.lastName || '',
-      other: `ბარათი №${p?.cardNumber || ''}; შემთხვევა №${v.caseNo}, ${v.kind === 'followup' ? 'განმეორებითი' : 'პირველადი'}`,
+      other: `ისტ. №${p?.cardNumber || ''}; შემთხ. №${v.caseNo}${v.kind === 'followup' ? ' (განმ.)' : ''}`,
       note: v.status === 'signed' ? '' : 'ხელმოუწერელი',
     };
   };
@@ -130,7 +130,12 @@ function RegistrationJournal() {
           <p className="small" style={{ textAlign: 'center' }}>
             {fmtDate(from)} — {fmtDate(to)}
           </p>
-          <table style={{ fontSize: '8.5pt', marginTop: 8 }}>
+          <table className="journal" style={{ marginTop: 8 }}>
+            <colgroup>
+              {[4, 7, 7, 8, 9, 7, 9, 8, 12, 13, 6, 7, 3].map((w, i) => (
+                <col key={i} style={{ width: `${w}%` }} />
+              ))}
+            </colgroup>
             <thead>
               <tr>
                 {HEAD.map((h) => (
@@ -175,7 +180,7 @@ function DocsJournal() {
   const csv = () => {
     const esc = (s: any) => `"${String(s ?? '').replace(/"/g, '""')}"`;
     const lines = [
-      ['№', 'თარიღი', 'დოკუმენტი', 'პაციენტი', 'პირადი №', 'ბარათი №', 'ექიმი', 'სტატუსი'].map(esc).join(','),
+      ['№', 'თარიღი', 'დოკუმენტი', 'პაციენტი', 'პირადი №', 'ისტორია №', 'ექიმი', 'სტატუსი'].map(esc).join(','),
       ...rows.map((d) => {
         const p = pmap.get(d.patientId);
         return [d.number, fmtDate(d.date), d.title, p ? patientName(p) : '', p?.idNumber, p?.cardNumber, userName(users.find((u) => u.id === d.doctorId)), d.status === 'signed' ? 'დასრულებული' : 'შავი'].map(esc).join(',');

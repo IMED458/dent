@@ -84,7 +84,7 @@ export function PatientForm({ open, onClose, patient, initialIdNumber }: { open:
         onClose();
       } else {
         const p = await createPatient(clean, user!.id);
-        ui.toast(`პაციენტი დარეგისტრირდა — ბარათი №${p.cardNumber}`);
+        ui.toast(`პაციენტი დარეგისტრირდა — ისტორია №${p.cardNumber}`);
         onClose();
         navigate('patient', p.id);
       }
@@ -101,7 +101,7 @@ export function PatientForm({ open, onClose, patient, initialIdNumber }: { open:
       open={open}
       onClose={onClose}
       size="lg"
-      title={patient ? `სტომატოლოგიური პაციენტის სამედიცინო ბარათი (ფორმა №IV-220/ა) №${patient.cardNumber}` : 'ახალი პაციენტის რეგისტრაცია — ფორმა №IV-220/ა'}
+      title={patient ? `ისტორია №${patient.cardNumber} — ფორმა №IV-220/ა` : 'ახალი პაციენტის რეგისტრაცია — ფორმა №IV-220/ა'}
       footer={
         <>
           <Button onClick={onClose}>გაუქმება</Button>
@@ -115,7 +115,7 @@ export function PatientForm({ open, onClose, patient, initialIdNumber }: { open:
         <section>
           <h4 className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-1">იდენტიფიკაცია</h4>
           <p className="text-[11px] text-slate-500 mb-2">
-            ბარათის ნომერი ენიჭება პირადი ნომრის მიხედვით, პირადი ნომრის არქონისას — რეგისტრაციის ჟურნალის (ფორმა №IV-220-3/ა) რიგითი ნომრით (ბრძანება №01-55/ნ, მუხ. 2.3).
+            ისტორიის ნომერი ენიჭება ავტომატურად წლის მიხედვით (1/26, 2/26 …) და აღარ იცვლება. პაციენტის ყველა მონაცემი ერთიანდება პირადი ნომრისა და ისტორიის ნომრის ქვეშ.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="დოკუმენტის ტიპი">
@@ -151,7 +151,7 @@ export function PatientForm({ open, onClose, patient, initialIdNumber }: { open:
               <span className="flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
-                  ამ ნომრით უკვე რეგისტრირებულია: <b>{patientName(dup)}</b>, {fmtDate(dup.birthDate)}, ბარათი №{dup.cardNumber}. ერთ პირზე მეორე ბარათი არ იხსნება.
+                  ამ ნომრით უკვე რეგისტრირებულია: <b>{patientName(dup)}</b>, {fmtDate(dup.birthDate)}, ისტორია №{dup.cardNumber}. ერთ პირზე მეორე ბარათი არ იხსნება.
                 </span>
               </span>
               <Button size="sm" icon={<UserCheck className="w-3.5 h-3.5" />} onClick={() => (onClose(), navigate('patient', dup.id))}>

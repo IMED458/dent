@@ -43,12 +43,11 @@ export type IdType = 'GE' | 'PASSPORT' | 'NONE';
 export interface Patient {
   id: string;
   /**
-   * სტომატოლოგიური პაციენტის სამედიცინო ბარათის (ფორმა №IV-220/ა) ნომერი.
-   * ბრძანება №01-55/ნ, მუხ. 2.3: ენიჭება პირადი ნომრის მიხედვით, ხოლო პირადი ნომრის
-   * არქონისას — რეგისტრაციის ჟურნალში (ფორმა №IV-220-3/ა) დაფიქსირებული რიგითი ნომრის მიხედვით.
+   * ისტორიის (სამედიცინო ბარათის, ფორმა №IV-220/ა) ნომერი: წლის რიგითი ნომერი/წელი — 1/26, 1000/26.
+   * ენიჭება ერთხელ, პირველი რეგისტრაციისას, და აღარ იცვლება. პაციენტის იდენტიფიკაცია — პირადი ნომრით.
    */
   cardNumber: string;
-  cardSource: 'personalId' | 'journal';
+  cardSource: 'history' | 'personalId' | 'journal';
   /** პირადი ნომრის არმქონე პაციენტისთვის დარეზერვებული ჟურნალის ნომერი (გამოიყენება პირველ ვიზიტზე) */
   reservedJournalNo?: number;
   idType: IdType;
@@ -274,6 +273,28 @@ export interface Appointment {
   status: 'planned' | 'confirmed' | 'arrived' | 'done' | 'cancelled' | 'noshow';
   note?: string;
   createdAt: string;
+}
+
+/** პაციენტზე დარიცხული/დაგეგმილი მომსახურება (წინასწარ, გადახდამდე) */
+export interface Charge {
+  id: string;
+  patientId: string;
+  date: string;
+  serviceId?: string;
+  code: string;
+  name: string;
+  group: string;
+  teeth: string;
+  qty: number;
+  price: number;
+  /** ფასდაკლება % */
+  discount: number;
+  /** planned — დაგეგმილი (ჯერ არ შესრულებულა); done — შესრულებული, ირიცხება ბალანსში */
+  status: 'planned' | 'done' | 'cancelled';
+  visitId?: string;
+  note: string;
+  createdAt: string;
+  createdBy: string;
 }
 
 export interface Payment {

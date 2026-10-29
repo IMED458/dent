@@ -284,7 +284,7 @@ function OdontogramSheet({ patient, teeth, dentition, date }: { patient: Patient
       <SheetHeader clinic={clinic} />
       <h1>ოდონტოგრამა (კბილთა ფორმულა)</h1>
       <p style={{ textAlign: 'center' }}>
-        {patientName(patient)} · პ/ნ {patient.idNumber || '—'} · ბარათი №{patient.cardNumber} · {fmtDate(date)}
+        {patientName(patient)} · პ/ნ {patient.idNumber || '—'} · ისტორია №{patient.cardNumber} · {fmtDate(date)}
       </p>
       <div style={{ display: 'flex', justifyContent: 'center', margin: '16px 0' }}>
         <OdontogramChart teeth={teeth} dentition={dentition} small />

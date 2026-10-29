@@ -5,7 +5,7 @@ import { DEFAULT_SERVICES, DEFAULT_TEMPLATES } from '../data/defaults';
 
 export class DuplicatePatientError extends Error {
   constructor(public existing: Patient) {
-    super(`პაციენტი ამ ნომრით უკვე რეგისტრირებულია: ${patientName(existing)} (ბარათი №${existing.cardNumber})`);
+    super(`პაციენტი ამ ნომრით უკვე რეგისტრირებულია: ${patientName(existing)} (ისტორია №${existing.cardNumber})`);
   }
 }
 
@@ -27,15 +27,11 @@ export function validatePatient(p: Partial<Patient>): Record<string, string> {
   return e;
 }
 
-/**
- * ბარათის ნომერი (ბრძანება №01-55/ნ, მუხ. 2.3): პირადი ნომრის მიხედვით; პირადი ნომრის არქონისას —
- * რეგისტრაციის ჟურნალის (ფორმა №IV-220-3/ა) რიგითი ნომრით. ჟურნალის ნომერი რეზერვდება და
- * გამოიყენება პაციენტის პირველი ვიზიტის ჩანაწერისთვის ჟურნალში.
- */
-async function cardFor(p: Pick<Patient, 'idType' | 'idNumber'>): Promise<Pick<Patient, 'cardNumber' | 'cardSource' | 'reservedJournalNo'>> {
-  if (p.idType === 'GE' && isValidGeId(p.idNumber)) return { cardNumber: p.idNumber, cardSource: 'personalId', reservedJournalNo: undefined };
-  const n = await nextCounter('journal');
-  return { cardNumber: String(n), cardSource: 'journal', reservedJournalNo: n };
+/** ისტორიის ნომერი: წლის რიგითი ნომერი/წლის ბოლო ორი ციფრი — 1/26, 2/26 … 1000/26; ახალ წელს იწყება 1-დან */
+async function cardFor(): Promise<Pick<Patient, 'cardNumber' | 'cardSource'>> {
+  const year = String(new Date().getFullYear());
+  const n = await nextCounter(`history:${year}`);
+  return { cardNumber: `${n}/${year.slice(2)}`, cardSource: 'history' };
 }
 
 export async function createPatient(
@@ -44,9 +40,9 @@ export async function createPatient(
 ) {
   const dup = await findByIdNumber(data.idNumber);
   if (dup && data.idType !== 'NONE') throw new DuplicatePatientError(dup);
-  const p: Patient = { ...data, id: uid(), ...(await cardFor(data)), createdAt: nowIso(), updatedAt: nowIso(), createdBy: userId };
+  const p: Patient = { ...data, id: uid(), ...(await cardFor()), createdAt: nowIso(), updatedAt: nowIso(), createdBy: userId };
   await db.patients.add(p);
-  await audit('CREATE', 'Patient', p.id, `პაციენტის რეგისტრაცია: ${patientName(p)}, ბარათი №${p.cardNumber}`, p.id);
+  await audit('CREATE', 'Patient', p.id, `პაციენტის რეგისტრაცია: ${patientName(p)}, ისტორია №${p.cardNumber}`, p.id);
   return p;
 }
 
@@ -58,14 +54,8 @@ export async function updatePatient(id: string, patch: Partial<Patient>) {
     if (dup) throw new DuplicatePatientError(dup);
   }
   const { cardNumber: _ignored, cardSource: _cs, reservedJournalNo: _r, id: _id, createdAt: _c, ...safe } = patch as Patient;
-  const next = { ...cur, ...safe };
-  // ბარათის ნომერი მიჰყვება პირად ნომერს (მაგ. შესწორების ან პირადი ნომრის მოგვიანებით მიღების შემთხვევაში)
-  let card: Partial<Patient> = {};
-  if (next.idType === 'GE' && isValidGeId(next.idNumber)) {
-    if (cur.cardNumber !== next.idNumber) card = { cardNumber: next.idNumber, cardSource: 'personalId', reservedJournalNo: undefined };
-  } else if (cur.cardSource === 'personalId') {
-    card = await cardFor(next);
-  }
+  // ისტორიის ნომერი არ იცვლება
+  const card: Partial<Patient> = {};
   const changed = Object.keys(safe).filter((k) => JSON.stringify((cur as any)[k]) !== JSON.stringify((safe as any)[k]));
   await db.patients.update(id, { ...safe, ...card, updatedAt: nowIso() });
   if (changed.length) await audit('UPDATE', 'Patient', id, `შეიცვალა ველები: ${changed.join(', ')}`, id);

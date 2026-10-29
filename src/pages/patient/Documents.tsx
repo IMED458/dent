@@ -257,7 +257,7 @@ function DocumentEditor({ doc, ctx, onClose }: { doc: MedDocument; ctx: DocCtx; 
     >
       <div className="space-y-4">
         <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          <b>პაციენტი:</b> {patientName(ctx.patient)} · პ/ნ {ctx.patient.idNumber || '—'} · ბარათი №{ctx.patient.cardNumber}
+          <b>პაციენტი:</b> {patientName(ctx.patient)} · პ/ნ {ctx.patient.idNumber || '—'} · ისტორია №{ctx.patient.cardNumber}
           <span className="block mt-0.5 text-slate-400">სამართლებრივი საფუძველი: {t.legal}</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

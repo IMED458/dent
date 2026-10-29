@@ -151,3 +151,12 @@ export function longDateKa(d = new Date()) {
 }
 
 export const weekdayShortKa = (d: Date) => KA_WEEKDAYS[d.getDay()].slice(0, 3);
+
+/** თანხის დამრგვალება თეთრამდე (მცურავი წერტილის შეცდომების გარეშე) */
+export const round2 = (n: number) => Math.round((Number(n) || 0) * 100 + Number.EPSILON) / 100;
+
+/** სტრიქონის ჯამი: რაოდენობა × ფასი − ფასდაკლება% */
+export const lineTotal = (qty: number, price: number, discount = 0) =>
+  round2(Math.max(1, Number(qty) || 1) * (Number(price) || 0) * (1 - Math.min(100, Math.max(0, Number(discount) || 0)) / 100));
+
+export const parseMoney = (v: string | number) => round2(Number(String(v).replace(',', '.').replace(/[^\d.]/g, '')) || 0);
