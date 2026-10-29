@@ -5,6 +5,8 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // ფარდობითი გზები: მუშაობს როგორც სერვერის ძირში (AI Studio), ისე ქვეგზაზე (GitHub Pages: /dent/)
+    base: './',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
